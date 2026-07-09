@@ -1,0 +1,776 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ТЕМЫ
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Тёмная (default) — плоская zinc-палитра, коммерческий минимализм ────── */
+:root {
+  --bg:    9   9  11;   /* zinc-950 */
+  --panel: 24  24  27;  /* zinc-900 */
+  --card:  24  24  27;  /* zinc-900 */
+  --card-alpha: 0.5;    /* карточка — zinc-900/50, плоско поверх zinc-950 */
+  --bdr:   39  39  42;  /* zinc-800 */
+  --bdr-a: 63  63  70;  /* zinc-700 */
+
+  --tx1: 249 250 252;
+  --tx2: 176 181 191;
+  --tx3: 113 113 122;   /* ближе к zinc-500 — читаемее для мелких иконок/подписей */
+
+  /* Акцент — насыщенный фиолетовый (было платиновое "серое" ощущение) */
+  --ac:   139  92 246;  /* #8B5CF6 */
+  --ac-h: 167 139 250;  /* #A78BFA */
+  --ac-m:  46  26  84;  /* #2E1A54 */
+
+  /* Доп. акценты для категорий/трендов — не заменяют --ac, используются точечно */
+  --ac2: 34 211 238;  /* #22D3EE cyan */
+  --ac3: 244 63 94;   /* #F43F5E hot pink/rose */
+
+  --glow:    0 0 20px rgba(139,92,246,0.25);
+  --glow-sm: 0 0 10px rgba(139,92,246,0.18);
+
+  --ui-hover:  rgb(255 255 255 / 0.06);
+  --ui-subtle: rgb(255 255 255 / 0.03);
+  --dot-color: rgba(255,255,255,0.82);
+  --btn-primary-text: 255 255 255;
+  --shadow-card:       0 1px 3px rgba(0,0,0,0.3);
+  --shadow-card-hover: 0 2px 6px rgba(0,0,0,0.35);
+
+  /* Главный фон приложения: плоский zinc-950, без открыточной многослойности */
+  --app-gradient:
+    radial-gradient(ellipse 900px 520px at 20% -10%, rgb(63 63 70 / 0.10) 0%, transparent 60%),
+    rgb(9 9 11);
+
+  --sidebar-glow:  none;
+  --content-glow:  none;
+  --auth-glow:     radial-gradient(ellipse 720px 480px at 50% -70px,
+                     rgb(235 240 250 / 0.08) 0%, transparent 72%);
+}
+
+/* ── Светлая ─────────────────────────────────────────────────────────────── */
+[data-theme="pearl"] {
+  --bg:    246 247 249;
+  --panel: 238 240 244;
+  --card:  255 255 255;
+  --card-alpha: 0.78;
+  --bdr:   218 222 230;
+  --bdr-a: 185 195 210;
+
+  --tx1:  14  18  26;
+  --tx2:  78  90 112;
+  --tx3: 145 158 175;
+
+  --ac:    59 130 246;
+  --ac-h:  37  99 235;
+  --ac-m: 215 230 254;
+  --ac2:   14 165 233;  /* #0EA5E9 */
+  --ac3:  225  29  72;  /* #E11D48 */
+
+  --glow:    0 0 20px rgba(59,130,246,0.18);
+  --glow-sm: 0 0 10px rgba(59,130,246,0.12);
+
+  --ui-hover:  rgb(0 0 0 / 0.045);
+  --ui-subtle: rgb(0 0 0 / 0.025);
+  --dot-color: rgba(0,0,0,0.15);
+  --btn-primary-text: 255 255 255;
+  --shadow-card:       0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04);
+  --shadow-card-hover: 0 4px 16px rgba(0,0,0,0.09), 0 0 0 1px rgb(var(--ac) / 0.14);
+
+  --app-gradient:
+    radial-gradient(ellipse 1000px 680px at 12% -8%, rgb(59 130 246 / 0.08) 0%, transparent 60%),
+    linear-gradient(145deg, #fbfcfe 0%, #eef2f8 55%, #e3e9f3 100%);
+
+  --sidebar-glow: linear-gradient(180deg, rgb(59 130 246 / 0.06) 0%, transparent 60%);
+  --content-glow: none;
+  --auth-glow: radial-gradient(ellipse 700px 500px at 50% -80px,
+    rgb(59 130 246 / 0.10) 0%, transparent 65%);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  /* Плавные переходы при смене темы */
+  transition:
+    background-color 220ms ease,
+    border-color     220ms ease,
+    color            160ms ease,
+    box-shadow       220ms ease,
+    opacity          160ms ease;
+}
+
+/* Анимации исключены из глобального перехода */
+.animate-spin,
+.animate-spin *,
+.animate-pulse,
+.animate-pulse *,
+.animate-fade-in,
+.animate-slide-up,
+.animate-tab {
+  transition: none !important;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+  color: rgb(var(--tx1));
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Базовый фон: градиент чёрный → серый */
+body {
+  background-color: rgb(var(--bg));
+  background-image: var(--app-gradient);
+  background-attachment: fixed;
+}
+
+/* Едва заметное дыхание фона — без зернистости и без выраженной анимации,
+   чтобы не создавать "вайбкодинг"-ощущение живого фона. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -25%;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgb(255 255 255 / 0.02), transparent 72%);
+  background-size: 54% 54%;
+  background-repeat: no-repeat;
+  background-position: 18% 12%;
+  animation: aurora 32s ease-in-out infinite alternate;
+  mix-blend-mode: screen;
+}
+
+/* Тонкая виньетка по краям — минимальная, плоская */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 120% 120% at 50% 50%, transparent 62%, rgb(0 0 0 / 0.3) 100%);
+}
+
+/* В светлой теме виньетка почти незаметна */
+[data-theme="pearl"] body::before {
+  background: radial-gradient(closest-side, rgb(59 130 246 / 0.06), transparent 70%);
+}
+[data-theme="pearl"] body::after {
+  background: radial-gradient(ellipse 120% 120% at 50% 50%,
+              transparent 70%, rgb(40 50 70 / 0.06) 100%);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: rgb(var(--bdr)); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--bdr-a)); }
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+input, textarea, select {
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+}
+
+/* ── Drag regions ────────────────────────────────────────────────────────── */
+.range-slider {
+  height: 22px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+}
+.range-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgb(var(--ac)) 0 var(--range-value, 0%), rgb(var(--bdr)) var(--range-value, 0%) 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+.range-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.68);
+  background: linear-gradient(180deg, rgb(var(--ac-h)), rgb(var(--ac)));
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+}
+.range-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgb(var(--ac) / 0.18), 0 2px 8px rgb(0 0 0 / 0.35);
+}
+
+.audio-range,
+.volume-range {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+}
+.audio-range { height: 24px; }
+.volume-range { height: 20px; }
+.audio-range::-webkit-slider-runnable-track,
+.volume-range::-webkit-slider-runnable-track {
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgb(var(--ac)) 0 var(--range-value, 0%), rgb(var(--bdr) / 0.9) var(--range-value, 0%) 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 0 0 1px rgb(var(--bdr) / 0.18);
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+.audio-range::-webkit-slider-runnable-track { height: 7px; }
+.volume-range::-webkit-slider-runnable-track { height: 5px; }
+.audio-range:hover::-webkit-slider-runnable-track,
+.volume-range:hover::-webkit-slider-runnable-track {
+  background:
+    linear-gradient(90deg, rgb(var(--ac-h)) 0 var(--range-value, 0%), rgb(var(--bdr-a) / 0.72) var(--range-value, 0%) 100%);
+  box-shadow: 0 0 18px rgb(var(--ac) / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.1);
+}
+.audio-range::-webkit-slider-thumb,
+.volume-range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.72);
+  background: linear-gradient(180deg, rgb(var(--ac-h)), rgb(var(--ac)));
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.36), 0 0 14px rgb(var(--ac) / 0.14);
+}
+.audio-range::-webkit-slider-thumb {
+  width: 17px;
+  height: 17px;
+  margin-top: -5px;
+}
+.volume-range::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: -4.5px;
+}
+.audio-range:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.soundcloud-wave {
+  cursor: pointer;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.045), transparent 76%),
+    rgb(0 0 0 / 0.12);
+  transition: background 150ms ease, opacity 150ms ease;
+}
+.soundcloud-wave:hover {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.07), transparent 78%),
+    rgb(0 0 0 / 0.16);
+}
+.soundcloud-wave .wave-layer {
+  position: absolute;
+  inset: 0.25rem 0.375rem;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.soundcloud-wave .wave-bar {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0%;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.025) inset;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+.soundcloud-wave .wave-layer-muted .wave-bar {
+  background: rgb(var(--bdr-a) / 0.42);
+}
+.soundcloud-wave .wave-layer-active {
+  transition: clip-path 90ms linear;
+}
+.soundcloud-wave .wave-layer-active .wave-bar {
+  background: linear-gradient(180deg, rgb(var(--ac-h)), rgb(var(--ac)));
+  box-shadow: 0 0 10px rgb(var(--ac) / 0.12);
+}
+.soundcloud-wave:hover .wave-bar {
+  opacity: 1;
+}
+.soundcloud-wave:hover .wave-layer-muted .wave-bar {
+  background: rgb(var(--bdr-a) / 0.58);
+}
+.soundcloud-wave:hover .wave-layer-active .wave-bar {
+  background: rgb(var(--ac-h));
+}
+.volume-control {
+  overflow: hidden;
+  width: 34px;
+  border-radius: 999px;
+  transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 180ms ease,
+    background 180ms ease, box-shadow 180ms ease;
+}
+.volume-control:hover,
+.volume-control:focus-within {
+  width: 116px;
+  border-color: rgb(var(--bdr-a) / 0.5);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.05), rgb(0 0 0 / 0.22));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 6px 18px rgb(0 0 0 / 0.3);
+}
+.volume-range-clean {
+  width: 0;
+  height: 20px;
+  cursor: pointer;
+  opacity: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease,
+    margin-left 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.volume-control:hover .volume-range-clean,
+.volume-control:focus-within .volume-range-clean {
+  width: 72px;
+  margin-left: 0.5rem;
+  opacity: 1;
+}
+.volume-range-clean::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg,
+      rgb(var(--ac-h)) 0 var(--range-value, 0%),
+      rgb(var(--bdr-a) / 0.25) var(--range-value, 0%) 100%);
+  box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.35), inset 0 0 0 1px rgb(255 255 255 / 0.04);
+  transition: box-shadow 160ms ease;
+}
+.volume-control:hover .volume-range-clean::-webkit-slider-runnable-track,
+.volume-control:focus-within .volume-range-clean::-webkit-slider-runnable-track {
+  box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.35), 0 0 14px rgb(var(--ac) / 0.22);
+}
+.volume-range-clean::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  margin-top: -4px;
+  border-radius: 999px;
+  border: 2px solid rgb(255 255 255 / 0.92);
+  background: radial-gradient(circle at 50% 35%, rgb(var(--ac-h)), rgb(var(--ac)));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.45), 0 0 0 0 rgb(var(--ac) / 0.4);
+  transition: box-shadow 140ms ease, transform 140ms ease;
+}
+.volume-range-clean:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.5), 0 0 0 5px rgb(var(--ac) / 0.18);
+}
+.volume-range-clean:active::-webkit-slider-thumb {
+  transform: scale(1.04);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.5), 0 0 0 7px rgb(var(--ac) / 0.24);
+}
+.volume-range-clean:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.5), 0 0 0 5px rgb(var(--ac) / 0.3);
+}
+.volume-pct {
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease,
+    margin-left 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.volume-control:hover .volume-pct,
+.volume-control:focus-within .volume-pct {
+  width: 28px;
+  margin-left: 0.375rem;
+  opacity: 1;
+}
+.premium-chat-widget,
+.premium-chat-panel {
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 180ms ease, background 160ms ease;
+}
+.premium-chat-widget:hover {
+  border-color: rgb(var(--ac) / 0.45);
+  transform: scale(1.06);
+  box-shadow: 0 16px 46px rgb(0 0 0 / 0.5), 0 0 24px rgb(var(--ac) / 0.12);
+}
+.premium-chat-panel {
+  animation: fadeInUp 180ms ease-out both;
+}
+
+.drag-region { -webkit-app-region: drag; }
+.no-drag     { -webkit-app-region: no-drag; }
+
+/* ── Utilities ───────────────────────────────────────────────────────────── */
+@layer utilities {
+  .shadow-glow    { box-shadow: var(--glow); }
+  .shadow-glow-sm { box-shadow: var(--glow-sm); }
+}
+
+/* ── Components ──────────────────────────────────────────────────────────── */
+@layer components {
+
+  /* Кнопка — основная */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2
+           text-white text-sm font-semibold px-4 py-2 rounded-xl
+           no-drag active:scale-[0.97] cursor-pointer;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.34), transparent 42%),
+      linear-gradient(135deg, rgb(var(--ac) / 0.94), rgb(var(--ac-h)));
+    color: rgb(var(--btn-primary-text));
+    border: 1px solid rgb(255 255 255 / 0.28);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.7),
+      inset 0 -1px 0 rgb(0 0 0 / 0.18),
+      0 10px 28px rgb(0 0 0 / 0.42),
+      0 0 18px rgb(var(--ac) / 0.10);
+    transition: filter 150ms ease, box-shadow 150ms ease, transform 80ms ease, opacity 150ms ease;
+  }
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.05) contrast(1.02);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.8),
+      inset 0 -1px 0 rgb(0 0 0 / 0.16),
+      0 12px 34px rgb(0 0 0 / 0.52),
+      0 0 24px rgb(var(--ac) / 0.18);
+  }
+  .btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Кнопка — второстепенная */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2
+           bg-transparent text-txt-secondary text-sm px-4 py-2 rounded-xl
+           border border-app-border no-drag active:scale-[0.97] cursor-pointer;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 70%),
+      rgb(var(--panel) / 0.42);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
+    transition: background 150ms ease, color 120ms ease, border-color 150ms ease, transform 80ms ease;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.07), transparent 74%),
+      rgb(var(--panel) / 0.72);
+    color: rgb(var(--tx1));
+    border-color: rgb(var(--bdr-a) / 0.72);
+  }
+  .btn-ghost:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  /* Карточка — плоский стиль: тонкая граница, полупрозрачный фон, одна лёгкая тень.
+     Альфа фона берётся из --card-alpha (своя на тему, см. :root/[data-theme="pearl"]) —
+     0.5 (zinc-900/50) для тёмной темы выглядит "плоско", но та же альфа для белой
+     карточки в светлой теме дала бы почти нечитаемый фон почти-белый на почти-белом. */
+  .card {
+    @apply relative border border-app-border/60 rounded-2xl;
+    background-color: rgb(var(--card) / var(--card-alpha));
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(16px) saturate(1.16);
+    -webkit-backdrop-filter: blur(16px) saturate(1.16);
+  }
+
+  /* Карточка с hover — лёгкий подъём + акцентная граница/свечение */
+  .card-interactive {
+    @apply card cursor-pointer;
+    transition: background-color 200ms ease, border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+  }
+  .card-interactive:hover {
+    background-color: rgb(var(--bdr) / 0.4);
+    border-color: rgb(var(--ac) / 0.45);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-card-hover), var(--glow-sm);
+  }
+
+  .track-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .track-card:hover {
+    background-color: rgb(var(--bdr) / 0.4);
+    border-color: rgb(var(--bdr-a) / 0.7);
+  }
+
+  /* Поле ввода */
+  .input-field {
+    @apply w-full bg-app-panel border border-app-border rounded-xl px-3 py-2.5
+           text-sm text-txt-primary placeholder-txt-muted no-drag;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.035), transparent 70%),
+      rgb(var(--panel) / 0.78);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.028),
+      inset 0 0 0 1px rgb(0 0 0 / 0.16);
+    transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  }
+  .input-field:focus {
+    border-color: rgb(var(--ac) / 0.62);
+    box-shadow:
+      0 0 0 3px rgb(var(--ac) / 0.08),
+      inset 0 1px 0 rgb(255 255 255 / 0.045);
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.052), transparent 76%),
+      rgb(var(--card) / 0.95);
+  }
+
+  /* Выпадающий список — своя стрелка вместо системной, лёгкий ховер и подсветка на фокусе */
+  .select-field {
+    @apply input-field appearance-none cursor-pointer pr-9;
+    background-image:
+      linear-gradient(180deg, rgb(255 255 255 / 0.035), transparent 70%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='currentColor' stroke-opacity='0.6' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+      linear-gradient(rgb(var(--panel) / 0.78), rgb(var(--panel) / 0.78));
+    background-repeat: no-repeat, no-repeat, no-repeat;
+    background-position: 0 0, right 0.9rem center, 0 0;
+    background-size: auto, 10px 6px, auto;
+  }
+  .select-field:hover {
+    @apply border-app-border-active;
+  }
+  .select-field:focus {
+    background-image:
+      linear-gradient(180deg, rgb(255 255 255 / 0.052), transparent 76%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+      linear-gradient(rgb(var(--card) / 0.95), rgb(var(--card) / 0.95));
+  }
+  .select-field:disabled {
+    @apply opacity-55 cursor-not-allowed;
+  }
+
+  /* Заголовок-аккордеон секции навигации — кликабельная строка с шевроном */
+  .nav-section-header {
+    @apply flex items-center justify-between w-full px-3 pb-1 pt-2.5 select-none no-drag cursor-pointer rounded-md;
+    background: transparent;
+    border: none;
+    transition: background 130ms ease;
+  }
+  .nav-section-header:hover {
+    background: rgb(var(--tx3) / 0.06);
+  }
+  .nav-section-header:active {
+    transform: scale(0.99);
+  }
+  .nav-section-label {
+    @apply text-[10px] font-semibold uppercase;
+    color: rgb(var(--tx3));
+    letter-spacing: 0.14em;
+    transition: color 130ms ease;
+  }
+  .nav-section-header:hover .nav-section-label {
+    color: rgb(var(--tx2));
+  }
+
+  /* Шеврон аккордеона — развёрнут смотрит вниз, при сворачивании плавно поворачивается */
+  .nav-chevron {
+    display: inline-flex;
+    color: rgb(var(--tx3));
+    opacity: 0.65;
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 130ms ease;
+  }
+  .nav-section-header:hover .nav-chevron {
+    opacity: 1;
+  }
+  .nav-chevron-collapsed {
+    transform: rotate(-90deg);
+  }
+
+  /* Тело выпадающей группы — анимация высоты через grid-template-rows (без фиксированных px) */
+  .nav-group-body {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .nav-group-body-collapsed {
+    grid-template-rows: 0fr;
+  }
+  .nav-group-body-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    overflow: hidden;
+  }
+
+  /* Навигационные кнопки сайдбара */
+  .tab-btn {
+    @apply relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-[10px] text-[13px] font-medium
+           no-drag cursor-pointer w-full select-none;
+    transition: background 150ms ease, color 120ms ease, transform 80ms ease;
+  }
+  .tab-btn:active { transform: scale(0.97); }
+
+  /* Иконка в навигации — приглушена, оживает при наведении/активности */
+  .tab-icon {
+    display: inline-flex;
+    opacity: 0.62;
+    transition: opacity 130ms ease, color 130ms ease, transform 130ms ease;
+  }
+
+  .tab-btn-active {
+    color: rgb(var(--ac));
+    background: rgb(var(--ac) / 0.12);
+    border: 1px solid transparent;
+  }
+  .tab-btn-active .tab-icon {
+    opacity: 1;
+    color: rgb(var(--ac-h));
+  }
+  /* Плоский акцент-индикатор слева у активной вкладки — без свечения */
+  .tab-btn-active::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 50%;
+    height: 18px;
+    width: 3px;
+    border-radius: 999px;
+    background: rgb(var(--ac));
+    transform: translateY(-50%);
+    animation: tabBar 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .tab-btn-inactive {
+    @apply text-txt-secondary;
+    border: 1px solid transparent;
+  }
+  .tab-btn-inactive:hover {
+    background: var(--ui-hover);
+    color: rgb(var(--tx1));
+  }
+  .tab-btn-inactive:hover .tab-icon {
+    opacity: 0.95;
+    transform: translateX(1px);
+  }
+
+  /* Бейдж */
+  .badge {
+    @apply text-[11px] px-2 py-0.5 rounded-lg font-medium;
+  }
+
+  /* Поле поиска — пилюля с подсветкой при фокусе */
+  .search-field {
+    @apply w-full text-xs text-txt-primary no-drag;
+    height: 34px;
+    padding: 0 2rem 0 2.15rem;          /* место под иконку слева и крестик справа */
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 70%),
+      rgb(var(--panel) / 0.72);
+    border: 1px solid rgb(var(--bdr) / 0.9);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.03),
+      inset 0 0 0 1px rgb(0 0 0 / 0.14);
+    transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+  }
+  .search-field::placeholder { color: rgb(var(--tx3)); }
+  .search-field:focus {
+    border-color: rgb(var(--ac) / 0.6);
+    box-shadow:
+      0 0 0 3px rgb(var(--ac) / 0.10),
+      0 6px 20px rgb(var(--ac) / 0.10),
+      inset 0 1px 0 rgb(255 255 255 / 0.05);
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.05), transparent 76%),
+      rgb(var(--card) / 0.94);
+  }
+  /* Иконка лупы подсвечивается акцентом, когда поле в фокусе */
+  .search-wrap:focus-within .search-icon { color: rgb(var(--ac)); }
+  .search-icon { transition: color 160ms ease; }
+}
+
+/* ── Keyframes ───────────────────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+@keyframes tabEnter {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+/* Медленно плывущее сияние фона */
+@keyframes aurora {
+  0%   { background-position: 12% 8%;   opacity: 0.9; }
+  50%  { background-position: 78% 42%;  opacity: 0.5; }
+  100% { background-position: 30% 88%;  opacity: 0.85; }
+}
+@keyframes tabBar {
+  from { opacity: 0; transform: translateY(-50%) scaleY(0.3); }
+  to   { opacity: 1; transform: translateY(-50%) scaleY(1);   }
+}
+@keyframes premiumPop {
+  0%   { transform: scale(0.985); filter: saturate(1); }
+  38%  { transform: scale(1.012); filter: saturate(1.32); }
+  100% { transform: scale(1); filter: saturate(1); }
+}
+@keyframes premiumShine {
+  0%   { transform: translateX(-130%) skewX(-18deg); opacity: 0; }
+  20%  { opacity: 0.95; }
+  100% { transform: translateX(130%) skewX(-18deg); opacity: 0; }
+}
+
+/* ── Анимации контента ───────────────────────────────────────────────────── */
+.animate-fade-in    { animation: fadeIn    220ms ease-out both; }
+.animate-slide-up   { animation: slideUp   250ms ease-out both; }
+.animate-fade-in-up { animation: fadeInUp  220ms ease-out both; }
+/* Плавная смена вкладок: лёгкий подъём + масштаб + расфокус */
+.animate-tab        { animation: tabEnter  340ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.premium-activation-pop {
+  animation: premiumPop 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.premium-activation-shine {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.34), transparent);
+  animation: premiumShine 1100ms ease-out both;
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--bdr) / 0.6) 25%,
+    rgb(var(--bdr-a) / 0.4) 50%,
+    rgb(var(--bdr) / 0.6) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* ── Доступность: уважаем системную настройку «меньше движения» ───────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Останавливаем фоновую «аврору» и блик премиума */
+  body::before { animation: none; }
+}

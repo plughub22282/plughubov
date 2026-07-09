@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Вас пригласили в PlugHub</title>
+  <meta name="description" content="Вас пригласили в PlugHub — маркетплейс VST3-плагинов с автоустановкой в один клик. Активируйте код приглашения и получите бонус." />
+  <meta name="robots" content="noindex" />
+  <link rel="stylesheet" href="/theme.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: '#020203', panel: '#0a0b0d', card: '#101114', bdr: '#26282e', 'bdr-a': '#666c79',
+            accent: '#d6dbe5', 'accent-hover': '#ffffff'
+          },
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'Segoe UI', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+</head>
+<body class="font-sans text-slate-200 antialiased min-h-screen">
+
+  <header class="px-5 py-6">
+    <a href="/" class="inline-flex items-center gap-2.5 font-bold text-white text-lg">
+      <span class="icon-tile w-9 h-9">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      </span>
+      PlugHub
+    </a>
+  </header>
+
+  <main class="px-5 pb-20 pt-6 sm:pt-12">
+    <div class="max-w-lg mx-auto">
+
+      <div id="loadingState" class="text-center text-slate-500 py-20">Проверяем ссылку…</div>
+
+      <!-- ─── Код не найден ──────────────────────────────────────────────── -->
+      <div id="invalidState" class="hidden text-center py-16">
+        <div class="text-5xl mb-4">🤔</div>
+        <h1 class="text-2xl font-bold text-white">Ссылка недействительна</h1>
+        <p class="mt-3 text-slate-400">Такого кода приглашения не существует — возможно, ссылку скопировали не полностью.</p>
+        <a href="/" class="btn-ghost mt-8 inline-flex px-6 py-3">На главную →</a>
+      </div>
+
+      <!-- ─── Приглашение ────────────────────────────────────────────────── -->
+      <div id="inviteState" class="hidden">
+        <div class="text-center">
+          <div class="pill inline-flex px-3.5 py-1.5 mb-6 text-xs font-medium">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 ping-dot"></span>
+            Реферальное приглашение
+          </div>
+          <h1 class="text-3xl sm:text-4xl font-extrabold text-white leading-tight">
+            <span id="referrerLine">Вас пригласили в</span> <span class="text-slate-300">PlugHub</span>
+          </h1>
+          <p class="mt-4 text-slate-400 leading-relaxed">
+            Установите приложение, войдите через Discord — и код приглашения активируется сам.
+            Уже установлен? Просто нажмите «Открыть в PlugHub» ниже.
+          </p>
+        </div>
+
+        <!-- Код -->
+        <div class="mt-8 card p-5">
+          <div class="text-xs uppercase tracking-[0.15em] text-slate-500 mb-2">Код приглашения</div>
+          <div class="flex items-center gap-2">
+            <div id="codeBox" class="flex-1 font-mono text-xl sm:text-2xl tracking-[0.2em] text-white bg-white/[.03] border border-white/[.08] rounded-xl px-4 py-3 text-center select-all"></div>
+            <button id="copyCodeBtn" class="btn-ghost flex-shrink-0 px-4 py-3 text-sm">Копировать</button>
+          </div>
+        </div>
+
+        <!-- Открыть в приложении -->
+        <a id="openAppBtn" href="#" class="btn-primary mt-5 w-full px-8 py-4">Открыть в PlugHub</a>
+        <p class="mt-3 text-center text-xs text-slate-500">Если приложение установлено — оно откроется и активирует код автоматически.</p>
+
+        <!-- Скачать -->
+        <div class="mt-8 pt-6 border-t border-white/[.08]">
+          <div class="text-center text-sm text-slate-400 mb-4">Ещё нет PlugHub?</div>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <a id="dlWindows" href="#" class="btn-ghost hidden w-full sm:w-auto px-6 py-3">Windows</a>
+            <a id="dlMac" href="#" class="btn-ghost hidden w-full sm:w-auto px-6 py-3">macOS</a>
+            <a id="dlLinux" href="#" class="btn-ghost hidden w-full sm:w-auto px-6 py-3">Linux</a>
+          </div>
+          <p class="mt-4 text-center text-xs text-slate-500 leading-relaxed">
+            Скачайте, войдите через Discord — код применится сам. Не сработало?
+            Вставьте его вручную в разделе <b class="text-slate-300">«Рефералы»</b> в приложении.
+          </p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Код приглашения — из адресной строки (/r/<CODE>), сервер ничего не подставляет в HTML.
+    const code = decodeURIComponent(location.pathname.replace(/^\/r\//, '')).trim().toUpperCase()
+
+    const loadingState = document.getElementById('loadingState')
+    const invalidState = document.getElementById('invalidState')
+    const inviteState = document.getElementById('inviteState')
+
+    function show(el) {
+      loadingState.classList.add('hidden')
+      invalidState.classList.add('hidden')
+      inviteState.classList.add('hidden')
+      el.classList.remove('hidden')
+    }
+
+    async function init() {
+      if (!code) return show(invalidState)
+
+      let result = { valid: false }
+      try {
+        const res = await fetch(`/api/referral/${encodeURIComponent(code)}`, { cache: 'no-store' })
+        result = await res.json()
+      } catch {
+        // Сеть недоступна — не блокируем приглашение: покажем код, просто без имени автора.
+        result = { valid: true }
+      }
+
+      if (!result.valid) return show(invalidState)
+
+      document.getElementById('codeBox').textContent = code
+      document.getElementById('openAppBtn').href = `plughub://ref/${encodeURIComponent(code)}`
+      if (result.referrerName) {
+        document.getElementById('referrerLine').textContent = `${result.referrerName} пригласил(а) вас в`
+      }
+      show(inviteState)
+
+      // Пытаемся открыть приложение сразу — если оно установлено и протокол
+      // зарегистрирован, окно PlugHub откроется поверх этой вкладки само.
+      window.location.href = `plughub://ref/${encodeURIComponent(code)}`
+    }
+    init()
+
+    document.getElementById('copyCodeBtn').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(code)
+        const btn = document.getElementById('copyCodeBtn')
+        const original = btn.textContent
+        btn.textContent = 'Скопировано'
+        setTimeout(() => { btn.textContent = original }, 1600)
+      } catch { /* буфер обмена недоступен (нет разрешения/не https) — молча игнорируем */ }
+    })
+
+    // ─── Скачивание — та же логика, что и на лендинге ───────────────────────
+    function setDownload(id, url) {
+      const el = document.getElementById(id)
+      if (!el) return
+      if (url) { el.href = url; el.classList.remove('hidden') }
+      else el.classList.add('hidden')
+    }
+    async function refreshDownloads() {
+      try {
+        const res = await fetch('/api/releases/latest', { cache: 'no-store' })
+        const release = (await res.json())?.release ?? null
+        if (!release) return
+        const d = release.downloads || {}
+        setDownload('dlWindows', d.windows)
+        setDownload('dlMac', d.mac)
+        setDownload('dlLinux', d.linux)
+      } catch { /* лендинг всё равно останется рабочим без блока скачивания */ }
+    }
+    refreshDownloads()
+  </script>
+</body>
+</html>

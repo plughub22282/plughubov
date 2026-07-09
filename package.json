@@ -1,0 +1,114 @@
+{
+  "name": "plughub",
+  "version": "1.0.0",
+  "description": "PlugHub — Cross-platform VST3 Plugin Marketplace",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "package": "electron-vite build && electron-builder",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
+    "extract-zip": "^2.0.1",
+    "lucide-react": "^1.23.0",
+    "ws": "^8.21.0",
+    "yauzl": "^2.10.0"
+  },
+  "devDependencies": {
+    "@types/extract-zip": "^2.0.3",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/ws": "^8.18.1",
+    "@types/yauzl": "^2.10.3",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.19",
+    "electron": "^41.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "png2icons": "^2.0.1",
+    "postcss": "^8.4.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.35.3",
+    "supabase": "^2.109.0",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.5.2"
+  },
+  "build": {
+    "appId": "com.plughub.app",
+    "productName": "PlugHub",
+    "copyright": "Copyright © 2024",
+    "protocols": [
+      {
+        "name": "PlugHub Referral",
+        "schemes": [
+          "plughub"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker",
+      "icon": "resources/icon.ico"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.music",
+      "icon": "resources/icon.icns"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Audio",
+      "icon": "resources/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "installerHeaderIcon": "resources/icon.ico",
+      "installerSidebar": "resources/installer-sidebar.bmp",
+      "uninstallerSidebar": "resources/installer-sidebar.bmp",
+      "artifactName": "PlugHub-Setup-${version}.${ext}"
+    }
+  },
+  "allowScripts": {
+    "electron@41.9.2": true,
+    "esbuild@0.21.5": true
+  }
+}
