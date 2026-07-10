@@ -66,7 +66,7 @@ interface AuthorRank {
   category: string
 }
 
-export default function Home({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
+export default function Home({ onNavigate, genre }: { onNavigate: (tab: Tab) => void; genre: string | null }) {
   const { t } = useI18n()
   const { items, loading, loaded, ensureLoaded } = useLibraryIndex()
   const { playTrack } = usePlayer()
@@ -75,15 +75,21 @@ export default function Home({ onNavigate }: { onNavigate: (tab: Tab) => void })
     ensureLoaded()
   }, [ensureLoaded])
 
-  const featured = useMemo(() => pickSample(items, 8), [items])
+  // Мягкий приоритет по жанру: совпадения по tags идут первыми, ничего не исключаем.
+  const genreMatch = (i: LibraryItem) => !!genre && !!i.tags?.some((tag) => tag.toLowerCase() === genre.toLowerCase())
+
+  const featured = useMemo(
+    () => [...pickSample(items, 8)].sort((a, b) => Number(genreMatch(b)) - Number(genreMatch(a))),
+    [items, genre]
+  )
 
   const trending = useMemo(
     () =>
       items
         .filter((i) => !!i.previewUrl)
-        .sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0))
+        .sort((a, b) => Number(genreMatch(b)) - Number(genreMatch(a)) || (b.downloads ?? 0) - (a.downloads ?? 0))
         .slice(0, 6),
-    [items]
+    [items, genre]
   )
 
   const topAuthors = useMemo(() => {
