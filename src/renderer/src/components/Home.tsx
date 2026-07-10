@@ -58,6 +58,33 @@ function pickSample(items: LibraryItem[], count: number): LibraryItem[] {
   return copy.slice(0, count)
 }
 
+function mulberry32(seed: number) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function hashString(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0
+  return h
+}
+
+/** Как pickSample(), но детерминированный: та же dateKey всегда даёт тот же набор —
+ * нужно для «Новое сегодня» (глобальная витрина дня, а не рандом на каждый рендер). */
+function pickDailySample(items: LibraryItem[], count: number, dateKey: string): LibraryItem[] {
+  const rand = mulberry32(hashString(dateKey))
+  const copy = [...items]
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1))
+    ;[copy[i], copy[j]] = [copy[j], copy[i]]
+  }
+  return copy.slice(0, count)
+}
+
 interface AuthorRank {
   key: string
   author: string
