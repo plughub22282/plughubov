@@ -15,6 +15,7 @@ export interface LibraryItem {
   authorIsPremium?: boolean
   /** Если задан — элемент можно проиграть в глобальном мини-плеере ("В тренде"). */
   previewUrl?: string
+  tags?: string[]
 }
 
 const AUDIO_EXT_RE = /\.(wav|mp3|flac|ogg|m4a|aac)$/i
@@ -37,7 +38,8 @@ function fromPlugin(p: Plugin, tab: Tab): LibraryItem {
     author: p.author,
     category: p.category,
     iconUrl: p.iconUrl,
-    authorIsPremium: p.authorIsPremium
+    authorIsPremium: p.authorIsPremium,
+    tags: p.tags
   }
 }
 
