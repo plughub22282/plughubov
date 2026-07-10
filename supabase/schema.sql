@@ -59,6 +59,12 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists referral_rewards_granted int not null default 0;
 
+-- ─── Онбординг (default false так же для существующих юзеров — увидят один раз) ──
+alter table public.profiles
+  add column if not exists onboarding_completed boolean not null default false,
+  add column if not exists onboarding_daw text,
+  add column if not exists onboarding_genre text;
+
 create unique index if not exists profiles_referral_code_uidx
   on public.profiles (referral_code)
   where referral_code is not null;
