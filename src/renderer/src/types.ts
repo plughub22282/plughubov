@@ -264,6 +264,9 @@ export interface AuthState {
   premiumUntil: string | null
   /** Владелец приложения: доступна вкладка «Ключи» (генерация премиум-кодов). */
   isOwner: boolean
+  onboardingCompleted: boolean
+  onboardingDaw: string | null
+  onboardingGenre: string | null
 }
 
 /** Премиум-код в панели владельца. */

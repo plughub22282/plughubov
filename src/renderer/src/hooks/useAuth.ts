@@ -14,7 +14,8 @@ interface UseAuth {
 }
 
 const SIGNED_OUT: AuthState = {
-  status: 'signedOut', user: null, role: null, premium: false, premiumUntil: null, isOwner: false
+  status: 'signedOut', user: null, role: null, premium: false, premiumUntil: null, isOwner: false,
+  onboardingCompleted: false, onboardingDaw: null, onboardingGenre: null
 }
 
 export function useAuth(): UseAuth {

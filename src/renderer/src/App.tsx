@@ -641,6 +641,7 @@ declare global {
         cancelDiscord: () => Promise<import('./types').AuthResult>
         signOut: () => Promise<import('./types').AuthResult>
         redeemPremium: (code: string) => Promise<import('./types').AuthResult>
+        completeOnboarding: (daw: string | null, genre: string | null) => Promise<import('./types').AuthResult>
         onChange: (cb: (state: import('./types').AuthState) => void) => () => void
       }
       premium: {
