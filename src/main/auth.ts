@@ -99,6 +99,10 @@ export interface AuthState {
   premiumUntil: string | null
   /** Владелец приложения: доступна вкладка «Ключи» (генерация премиум-кодов). */
   isOwner: boolean
+  /** Онбординг (оверлей ценности + анкета DAW/жанр) пройден. */
+  onboardingCompleted: boolean
+  onboardingDaw: string | null
+  onboardingGenre: string | null
 }
 
 export interface AuthResult {
@@ -108,7 +112,8 @@ export interface AuthResult {
 }
 
 const SIGNED_OUT: AuthState = {
-  status: 'signedOut', user: null, role: null, premium: false, premiumUntil: null, isOwner: false
+  status: 'signedOut', user: null, role: null, premium: false, premiumUntil: null, isOwner: false,
+  onboardingCompleted: false, onboardingDaw: null, onboardingGenre: null
 }
 
 // ─── Маппинг ошибок Supabase в человекочитаемые сообщения ───────────────────────
@@ -196,26 +201,43 @@ function buildBaseState(session: Session | null): AuthState {
 }
 
 /**
- * Прочитать срок действия премиума из profiles (выдаётся кодом активации).
- * Возвращает ISO-строку premium_until или null. Best-effort.
+ * Прочитать премиум/онбординг-поля профиля из БД одним запросом. Best-effort:
+ * при ошибке отдаёт безопасные дефолты (премиума/онбординга нет).
  */
-async function fetchDbPremiumUntil(userId: string): Promise<string | null> {
+async function fetchDbProfileExtras(userId: string): Promise<{
+  premiumUntil: string | null
+  onboardingCompleted: boolean
+  onboardingDaw: string | null
+  onboardingGenre: string | null
+}> {
+  const empty = { premiumUntil: null, onboardingCompleted: false, onboardingDaw: null, onboardingGenre: null }
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('premium_until')
+      .select('premium_until, onboarding_completed, onboarding_daw, onboarding_genre')
       .eq('id', userId)
       .maybeSingle()
-    if (error) return null
-    return (data as { premium_until?: string | null } | null)?.premium_until ?? null
+    if (error || !data) return empty
+    const row = data as {
+      premium_until?: string | null
+      onboarding_completed?: boolean | null
+      onboarding_daw?: string | null
+      onboarding_genre?: string | null
+    }
+    return {
+      premiumUntil: row.premium_until ?? null,
+      onboardingCompleted: row.onboarding_completed ?? false,
+      onboardingDaw: row.onboarding_daw ?? null,
+      onboardingGenre: row.onboarding_genre ?? null
+    }
   } catch {
-    return null
+    return empty
   }
 }
 
 /**
- * Полное состояние авторизации: базовое + срок премиума из БД. Если статичные
- * источники (владелец/автор) уже дали бессрочный премиум, в БД не ходим.
+ * Полное состояние авторизации: базовое + данные из БД. В БД ходим всегда, даже
+ * для allow-list премиума — онбординг нужен и премиум/автор/owner пользователям.
  */
 async function buildState(session: Session | null): Promise<AuthState> {
   const base = buildBaseState(session)
@@ -225,11 +247,22 @@ async function buildState(session: Session | null): Promise<AuthState> {
   // (best-effort, один раз на пользователя за запуск) — нужен для анти-абуза рефералов.
   void registerDeviceBestEffort()
 
-  if (base.premium) return base // allow-list премиум — бессрочный, срок не нужен
+  const extras = await fetchDbProfileExtras(base.user.id)
+  const onboarding = {
+    onboardingCompleted: extras.onboardingCompleted,
+    onboardingDaw: extras.onboardingDaw,
+    onboardingGenre: extras.onboardingGenre
+  }
 
-  const until = await fetchDbPremiumUntil(base.user.id)
-  const active = until != null && new Date(until).getTime() > Date.now()
-  return { ...base, premium: active, premiumUntil: active ? until : null }
+  if (base.premium) return { ...base, ...onboarding } // allow-list премиум — бессрочный, срок не нужен
+
+  const active = extras.premiumUntil != null && new Date(extras.premiumUntil).getTime() > Date.now()
+  return {
+    ...base,
+    premium: active,
+    premiumUntil: active ? extras.premiumUntil : null,
+    ...onboarding
+  }
 }
 
 function focusMainWindow(): void {
@@ -290,6 +323,31 @@ async function redeemPremium(code: string): Promise<AuthResult> {
     }
   } catch (e) {
     return { ok: false, error: humanizeError(e as Error, 'Не удалось активировать код.') }
+  }
+}
+
+/**
+ * Завершить онбординг: onboarding_completed = true, плюс DAW/жанр если заданы
+ * (null — пропущено). Колонки не защищены prevent_role_change — обычный update
+ * под profiles_update_own, RPC не нужен (см. src/main/../supabase/schema.sql).
+ */
+async function completeOnboarding(daw: string | null, genre: string | null): Promise<AuthResult> {
+  const { data: sess } = await supabase.auth.getSession()
+  if (!sess.session?.user) return { ok: false, error: 'Войдите, чтобы продолжить.' }
+
+  try {
+    const patch: Record<string, unknown> = { onboarding_completed: true }
+    if (daw != null) patch.onboarding_daw = daw
+    if (genre != null) patch.onboarding_genre = genre
+
+    const { error } = await supabase.from('profiles').update(patch).eq('id', sess.session.user.id)
+    if (error) return { ok: false, error: humanizeError(error, 'Не удалось сохранить онбординг.') }
+
+    const state = await buildState(sess.session)
+    broadcast(state)
+    return { ok: true, state }
+  } catch (e) {
+    return { ok: false, error: humanizeError(e as Error, 'Не удалось сохранить онбординг.') }
   }
 }
 
@@ -507,6 +565,11 @@ export function registerAuthIpc(): void {
     const blocked = rejectUntrustedSender(event)
     if (blocked) return blocked
     return redeemPremium(code)
+  })
+  ipcMain.handle('auth:completeOnboarding', (event, daw: string | null, genre: string | null) => {
+    const blocked = rejectUntrustedSender(event)
+    if (blocked) return blocked
+    return completeOnboarding(daw, genre)
   })
 
   // Любое изменение сессии (вход, выход, авто-обновление токена) → транслируем в окна.
