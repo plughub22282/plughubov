@@ -11,6 +11,8 @@ import PremiumPage from './components/PremiumPage'
 import ReferralPage from './components/ReferralPage'
 import Settings from './components/Settings'
 import AuthScreen from './components/AuthScreen'
+import Onboarding from './components/Onboarding'
+import OnboardingTour from './components/OnboardingTour'
 import PremiumChat from './components/PremiumChat'
 import { PlayerBar, usePlayer } from './components/PlayerBar'
 import { PremiumBadge } from './components/PremiumBadge'
@@ -211,6 +213,7 @@ export default function App(): React.ReactElement {
   const [tab, setTab] = useState<Tab>('home')
   const [searchFocused, setSearchFocused] = useState(false)
   const [referralDeepLinkMsg, setReferralDeepLinkMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [showTour, setShowTour] = useState(false)
 
   useEffect(() => {
     window.api.getSettings().then((s) => applyTheme(s.theme ?? 'carbon'))
@@ -414,6 +417,7 @@ export default function App(): React.ReactElement {
         {/* Поиск — по центру, для разделов с каталогом */}
         {showSearch && (
           <div
+            data-tour="search"
             className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(440px,44%)] no-drag"
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
@@ -484,7 +488,7 @@ export default function App(): React.ReactElement {
               прибиты отдельно к низу: так весь список читается единым потоком сверху вниз.
               Каждая группа — аккордеон: заголовок сворачивает/разворачивает свой список
               пунктов с анимацией высоты через CSS grid (nav-group-body). */}
-          <nav className="flex flex-col flex-1 gap-1 overflow-y-auto -mr-1 pr-1">
+          <nav data-tour="sidebar-sections" className="flex flex-col flex-1 gap-1 overflow-y-auto -mr-1 pr-1">
             {/* «Главная» — закреплена над аккордеон-секциями, дефолтная вкладка при запуске. */}
             <button
               onClick={() => setTab('home')}
@@ -530,6 +534,7 @@ export default function App(): React.ReactElement {
           {/* Premium CTA — показываем тем, у кого премиума ещё нет */}
           {!isPremium && (
             <button
+              data-tour="premium-cta"
               onClick={() => setTab('premium')}
               className="w-full flex items-center gap-2 px-3 py-2 mb-2 rounded-xl text-xs font-semibold no-drag"
               style={{
@@ -595,7 +600,7 @@ export default function App(): React.ReactElement {
         {/* Content */}
         <main className={`flex-1 overflow-hidden ${playerTrack ? 'pb-14' : ''}`}>
           <div key={tab} className="h-full animate-tab">
-            {tab === 'home'        && <Home onNavigate={setTab} />}
+            {tab === 'home'        && <Home onNavigate={setTab} genre={auth.state.onboardingGenre} />}
             {tab === 'catalog'     && <Catalog />}
             {tab === 'marketplace' && <Marketplace />}
             {tab === 'vladon' && (
@@ -624,6 +629,12 @@ export default function App(): React.ReactElement {
 
       <PlayerBar />
       <PremiumChat user={auth.state.user ? { ...auth.state.user, isPremium } : null} />
+
+      {/* onboardingCompleted придёт через auth:changed после completeOnboarding — оверлей закроется сам */}
+      {auth.status === 'signedIn' && !auth.state.onboardingCompleted && (
+        <Onboarding onDone={() => {}} onStartTour={() => setShowTour(true)} />
+      )}
+      {showTour && <OnboardingTour onFinish={() => setShowTour(false)} />}
     </div>
   )
 }

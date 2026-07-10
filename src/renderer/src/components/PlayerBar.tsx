@@ -165,6 +165,7 @@ export function PlayerBar(): React.ReactElement | null {
 
   return (
     <div
+      data-tour="player"
       className="no-drag fixed bottom-4 left-4 right-24 z-30 flex items-center gap-4 rounded-2xl border border-app-border/50 px-4 py-3 shadow-[0_12px_38px_rgb(0_0_0_/_0.35)]"
       style={{
         backgroundColor: 'rgb(var(--panel) / 0.92)',
