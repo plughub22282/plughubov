@@ -77,7 +77,9 @@ function hashString(s: string): number {
  * нужно для «Новое сегодня» (глобальная витрина дня, а не рандом на каждый рендер). */
 function pickDailySample(items: LibraryItem[], count: number, dateKey: string): LibraryItem[] {
   const rand = mulberry32(hashString(dateKey))
-  const copy = [...items]
+  // Сортировка по id перед шаффлом — вход детерминирован независимо от порядка,
+  // в котором backend вернул строки (created_at не уникален, стабильный order не гарантирован).
+  const copy = [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1))
     ;[copy[i], copy[j]] = [copy[j], copy[i]]
