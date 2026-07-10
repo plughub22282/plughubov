@@ -152,6 +152,9 @@ export interface AuthState {
   premiumUntil: string | null
   /** Владелец приложения: доступна вкладка «Ключи». */
   isOwner: boolean
+  onboardingCompleted: boolean
+  onboardingDaw: string | null
+  onboardingGenre: string | null
 }
 
 /** Премиум-код в панели владельца. */
@@ -277,6 +280,8 @@ const api = {
     // Активация премиума по коду. Возвращает обновлённое состояние при успехе.
     redeemPremium: (code: string): Promise<AuthResult> =>
       ipcRenderer.invoke('auth:redeemPremium', code),
+    completeOnboarding: (daw: string | null, genre: string | null): Promise<AuthResult> =>
+      ipcRenderer.invoke('auth:completeOnboarding', daw, genre),
     onChange: (cb: (state: AuthState) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, state: AuthState) => cb(state)
       ipcRenderer.on('auth:changed', handler)
