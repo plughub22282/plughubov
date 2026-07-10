@@ -110,6 +110,11 @@ export default function Home({ onNavigate, genre }: { onNavigate: (tab: Tab) => 
     [items, genre]
   )
 
+  const dailyDrop = useMemo(
+    () => pickDailySample(items, 5, new Date().toDateString()),
+    [items]
+  )
+
   const trending = useMemo(
     () =>
       items
@@ -158,6 +163,51 @@ export default function Home({ onNavigate, genre }: { onNavigate: (tab: Tab) => 
           <div className="flex items-center justify-center h-40 text-xs text-txt-muted">{t('home.empty')}</div>
         ) : (
           <>
+            {dailyDrop.length > 0 && (
+              <section
+                className="rounded-2xl border-2 p-4 -m-4"
+                style={{ borderColor: 'rgb(var(--ac) / 0.4)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-txt-primary">{t('home.dailyDrop')}</h2>
+                  <span
+                    className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase"
+                    style={{ color: 'rgb(var(--ac))', background: 'rgb(var(--ac) / 0.14)' }}
+                  >
+                    {t('home.dailyDropBadge')}
+                  </span>
+                </div>
+                <p className="text-[11px] text-txt-muted mt-1 mb-4">{t('home.dailyDropSub')}</p>
+                <div className="flex gap-4 overflow-x-auto pb-2">
+                  {dailyDrop.map((item) => (
+                    <button
+                      key={`daily-${item.tab}-${item.id}`}
+                      onClick={() => onNavigate(item.tab)}
+                      className="flex-shrink-0 w-36 p-4 flex flex-col gap-2.5 text-left no-drag rounded-2xl
+                                 border border-app-border/60 bg-app-card/50
+                                 transition-all duration-200 hover:bg-app-border/20 hover:scale-[1.02]"
+                    >
+                      <div className="relative">
+                        <ItemIcon item={item} size="w-full h-24" rounded="rounded-xl" />
+                        {item.downloads !== undefined && item.downloads > 0 && (
+                          <span
+                            className="absolute top-1.5 left-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+                            style={{ color: 'rgb(var(--ac))', background: 'rgb(var(--card) / 0.85)', border: '1px solid rgb(var(--ac) / 0.3)' }}
+                          >
+                            {item.downloads}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-txt-primary truncate">{item.name}</p>
+                        <p className="text-[10px] text-txt-muted truncate mt-0.5">{item.category}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {/* Для вдохновения */}
             <section>
               <h2 className="text-sm font-semibold text-txt-primary">{t('home.forInspiration')}</h2>
