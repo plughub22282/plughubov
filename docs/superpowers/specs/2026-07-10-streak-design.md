@@ -67,6 +67,31 @@
 - Эффективный лимит для free = `50 + (bonus_download_slots, если bonus_download_slots_month = date_trunc('month', now())::date, иначе 0)`.
 - Проверка — **до** скачивания: в начале `assets:download` (`src/main/index.ts:2553`), сразу после `fetchCommunityContent(id)` (где уже известен `asset.kind`), до вызова `downloadFile`/скана. Если квота исчерпана — `{ ok: false, error: '...' }` сразу, без скачивания и без скана.
 
+## Интеграция с реферальной системой
+
+`count_qualified_referrals(p_referrer uuid)` (`supabase/schema.sql:1099-1130`): CTE `refs` уже селектит из `profiles p` — достаточно добавить одну колонку в select-лист, джойн не нужен:
+
+```sql
+refs as (
+  select
+    p.id,
+    p.created_at,
+    public.primary_device(p.id) as dev,
+    public.discord_created_at(p.id) as born,
+    p.streak_count as streak          -- новое поле
+  from public.profiles p
+  where p.referred_by = p_referrer
+),
+```
+
+В CTE `eligible` к существующим условиям (`dev <> referrer_dev`, `born <= now() - 30 days`) добавляется третье: `and r.streak >= 3`.
+
+Итоговое условие «засчитанного» реферала: устройство приглашённого отличается от реферера **и** возраст Discord-аккаунта ≥ 30 дней **и** `streak_count` приглашённого ≥ 3 (реальные 3 дня подряд использования приложения — поведенческий сигнал, которого раньше не было).
+
+Граничный случай: `count_qualified_referrals` пересчитывается на лету при каждом вызове `referral_stats()`/`redeem_referral_rewards()`, ретроактивной миграции данных не требуется. Уже выданные премиум-дни (`referral_rewards_granted`) не отбираются — `redeem_referral_rewards()` только доначисляет новые блоки (`v_new = v_blocks - v_granted`, `if v_new <= 0` — no-op). Эффект ужесточения: рефералы, у которых ещё нет 3-дневного стрика, временно не засчитываются в `qualified`, пока не наберут его — для реферера это отложенная, а не потерянная награда.
+
+UI не меняется — `ReferralProgram.tsx` уже показывает `qualified`/`rewards_available` из `referral_stats()` динамически.
+
 ## IPC-контракт
 
 Новый файл в `preload.ts` → `window.api.streak`:
@@ -138,3 +163,4 @@ Main-процесс — два новых `ipcMain.handle('streak:touch', ...)` 
   - Пропуск дня (искусственно поставить `streak_last_date` на 2+ дня назад) — при следующем заходе `streak_count` сбрасывается на 1.
   - День 28 — после выбора награды `streak_count` сбрасывается на 1, `streak_reward_stage = 0`, новый цикл стартует корректно.
   - Смена месяца после начисления бонуса — бонус не переносится на новый месяц (проверить по `bonus_*_month`).
+  - Приглашённый с валидным устройством и возрастом Discord, но `streak_count < 3` — не попадает в `qualified` у реферера; после того как приглашённый наберёт стрик 3 — попадает без ручных действий реферера.
