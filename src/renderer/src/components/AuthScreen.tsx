@@ -41,13 +41,9 @@ export default function AuthScreen({
 
           {/* Logo */}
           <div className="flex flex-col items-center mb-8 select-none">
-            <div className="relative mb-5">
+            <div className="mb-5">
               <div
-                className="absolute -inset-3 rounded-3xl blur-2xl opacity-30"
-                style={{ background: `radial-gradient(circle, rgb(var(--ac) / 0.6), transparent)` }}
-              />
-              <div
-                className="relative w-16 h-16 rounded-2xl flex items-center justify-center text-white"
+                className="w-16 h-16 rounded-2xl flex items-center justify-center text-white"
                 style={{
                   background: 'linear-gradient(135deg, rgb(var(--ac)), rgb(var(--ac-h)))',
                   boxShadow: '0 8px 24px rgb(var(--ac) / 0.35)'
@@ -133,7 +129,11 @@ export default function AuthScreen({
 
           {/* Error */}
           {error && (
-            <div className="mt-3 text-xs text-status-error bg-red-500/8 border border-red-500/15 rounded-xl px-4 py-3 animate-fade-in">
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="mt-3 text-xs text-status-error bg-red-500/8 border border-red-500/15 rounded-xl px-4 py-3 animate-fade-in"
+            >
               {error}
             </div>
           )}

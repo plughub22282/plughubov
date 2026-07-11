@@ -37,6 +37,9 @@ export function FileDropZone({ label, accept, value, onSelect, hint, icon }: Dro
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={label}
       onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
@@ -48,6 +51,12 @@ export function FileDropZone({ label, accept, value, onSelect, hint, icon }: Dro
             : 'border-app-border hover:border-app-border-active hover:bg-white/3'
       }`}
       onClick={handleBrowse}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          void handleBrowse()
+        }
+      }}
     >
       <div className={value ? 'text-status-success' : 'text-txt-muted'}>{icon}</div>
 
@@ -88,6 +97,8 @@ export interface ToastProps {
 export function Toast({ message, type, onClose }: ToastProps) {
   return (
     <div
+      role="alert"
+      aria-live={type === 'error' ? 'assertive' : 'polite'}
       className={`fixed bottom-6 right-6 flex items-start gap-3 px-4 py-3 rounded-lg border shadow-xl z-50 max-w-xs transition-all ${
         type === 'success'
           ? 'bg-green-900/80 border-green-700 text-green-200'

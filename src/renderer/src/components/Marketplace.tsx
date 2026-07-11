@@ -3,6 +3,7 @@ import type { CommunityPlugin, InstallProgress, Plugin } from '../types'
 import { useI18n } from '../i18n'
 import { useSearch } from '../hooks/useSearch'
 import { useUploadProgress } from '../hooks/useUploadProgress'
+import { useEscapeToClose } from '../hooks/useEscapeToClose'
 import {
   PluginCard, PluginDetailsModal, SkeletonCard, Empty, UploadSteps,
   IconRefresh, IconX
@@ -36,6 +37,8 @@ function UploadModal({ onClose, onUploaded, notify }: {
   const [iconPath, setIconPath] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const { progress, start, reset } = useUploadProgress()
+
+  useEscapeToClose(onClose)
 
   const update = <K extends keyof UploadForm>(k: K, v: UploadForm[K]) => setForm((p) => ({ ...p, [k]: v }))
 
@@ -107,7 +110,7 @@ function UploadModal({ onClose, onUploaded, notify }: {
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
-              <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+              <label className="form-label">
                 {t('common.name')} *
               </label>
               <input
@@ -116,7 +119,7 @@ function UploadModal({ onClose, onUploaded, notify }: {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+              <label className="form-label">
                 {t('common.version')} *
               </label>
               <input
@@ -127,7 +130,7 @@ function UploadModal({ onClose, onUploaded, notify }: {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+            <label className="form-label">
               {t('common.category')}
             </label>
             <select
@@ -140,7 +143,7 @@ function UploadModal({ onClose, onUploaded, notify }: {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+            <label className="form-label">
               {t('common.description')} *
             </label>
             <textarea
@@ -155,7 +158,7 @@ function UploadModal({ onClose, onUploaded, notify }: {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+              <label className="form-label">
                 {t('marketplace.archive')} *
               </label>
               <FileDropZone
@@ -171,7 +174,7 @@ function UploadModal({ onClose, onUploaded, notify }: {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+              <label className="form-label">
                 {t('common.icon')}
               </label>
               <FileDropZone
@@ -396,7 +399,7 @@ export default function Marketplace() {
       {/* ── Content ─────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-5">
         {loadState === 'loading' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
             {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
 
@@ -420,7 +423,7 @@ export default function Marketplace() {
           />
 
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-fade-in">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4 animate-fade-in">
             {filtered.map((plugin) => (
               <PluginCard
                 key={plugin.id}

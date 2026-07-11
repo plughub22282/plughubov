@@ -56,6 +56,7 @@ export interface StudioRestoreResult {
   total?: number
   installed?: number
   failed?: Array<{ id: string; error: string }>
+  cancelled?: boolean
   error?: string
 }
 

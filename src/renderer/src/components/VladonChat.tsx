@@ -494,9 +494,9 @@ function ChatBubble({ message }: { message: AiChatMessage & { kind: 'chat' } }):
           )}
           {message.pending && message.text === '' && (
             <span className="inline-flex gap-0.5 align-middle">
-              <span className="h-1 w-1 animate-bounce rounded-full bg-current [animation-delay:-0.2s]" />
-              <span className="h-1 w-1 animate-bounce rounded-full bg-current [animation-delay:-0.1s]" />
-              <span className="h-1 w-1 animate-bounce rounded-full bg-current" />
+              <span className="h-1 w-1 animate-pulse rounded-full bg-current [animation-delay:-0.2s]" />
+              <span className="h-1 w-1 animate-pulse rounded-full bg-current [animation-delay:-0.1s]" />
+              <span className="h-1 w-1 animate-pulse rounded-full bg-current" />
             </span>
           )}
         </div>

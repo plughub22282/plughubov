@@ -144,6 +144,26 @@ export function PlayerBar(): React.ReactElement | null {
   const lastVolumeRef = useRef(volume || 1)
   if (volume > 0) lastVolumeRef.current = volume
 
+  // Space = play/pause, ←/→ = перемотка на 5с. Игнорируем, пока фокус в поле ввода.
+  useEffect(() => {
+    if (!current) return
+    const handler = (e: KeyboardEvent) => {
+      const el = document.activeElement as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+
+      if (e.code === 'Space') {
+        e.preventDefault()
+        togglePlay()
+      } else if (e.key === 'ArrowLeft') {
+        seekTo(Math.max(0, currentTime - 5))
+      } else if (e.key === 'ArrowRight') {
+        seekTo(Math.min(duration, currentTime + 5))
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [current, togglePlay, seekTo, currentTime, duration])
+
   if (!current) return null
 
   const pct = duration ? (currentTime / duration) * 100 : 0

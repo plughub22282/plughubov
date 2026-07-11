@@ -62,7 +62,7 @@ export function HashtagInput({ value, onChange, disabled }: HashtagInputProps) {
   return (
     <div>
       <div className="flex items-center justify-between gap-3 mb-2">
-        <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider">
+        <label className="form-label mb-0">
           {t('hashtags.label')}
         </label>
         <span className="text-[11px] text-txt-muted tabular-nums">

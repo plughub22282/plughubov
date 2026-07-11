@@ -1,9 +1,12 @@
-import React, { useRef, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import type { Plugin, InstallProgress, UploadStep } from '../types'
 import { useI18n } from '../i18n'
 import { AudioPlayerBar, PresetComparePlayer } from './AudioPlayer'
 import { PremiumBadge } from './PremiumBadge'
 import { ImageWithFallback } from './ImageWithFallback'
+import { useEscapeToClose } from '../hooks/useEscapeToClose'
+import { useUploadProgress } from '../hooks/useUploadProgress'
+import { FileDropZone, Toast, type ToastType } from './FileDropZone'
 
 // ─── Категории ────────────────────────────────────────────────────────────────
 
@@ -126,7 +129,14 @@ export function ProgressBar({ pct, label }: { pct: number; label: string }) {
         <span className="text-txt-muted">{label}</span>
         <span className="font-medium text-accent">{pct}%</span>
       </div>
-      <div className="h-1 bg-app-panel rounded-full overflow-hidden">
+      <div
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label}
+        className="h-1 bg-app-panel rounded-full overflow-hidden"
+      >
         <div
           className="h-full rounded-full"
           style={{ width: `${pct}%`, background: 'rgb(var(--ac))', transition: 'width 200ms ease' }}
@@ -190,10 +200,292 @@ export function UploadSteps({ step, error, hasIcon }: {
         )
       })}
       {isError && (
-        <div className="text-[11px] text-status-error bg-red-500/8 border border-red-500/15 rounded-xl px-3 py-2 mt-1">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="text-[11px] text-status-error bg-red-500/8 border border-red-500/15 rounded-xl px-3 py-2 mt-1"
+        >
           {error ?? t('plugin.unknownError')}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Upload Locked Screen ───────────────────────────────────────────────────
+// Общий экран-заглушка для форм публикации, к которым у пользователя нет доступа
+// (роль не «author» / не владелец приложения и т.п.).
+
+export function UploadLockedScreen({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="h-full flex items-center justify-center px-6">
+      <div className="max-w-sm text-center">
+        <div className="w-14 h-14 rounded-2xl bg-app-panel border border-app-border flex items-center justify-center mx-auto mb-5 text-txt-muted">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+        </div>
+        <h2 className="text-lg font-semibold text-txt-primary mb-2">{title}</h2>
+        <p className="text-sm text-txt-secondary leading-relaxed">{text}</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Plugin Upload Form ─────────────────────────────────────────────────────
+// Общая форма публикации плагина: используется и авторами (UploadPlugin, свой
+// маркетплейс) и админом (AdminCatalogUpload, официальный каталог). Разница —
+// только в наличии поля «Автор» и в переданном submit-обработчике.
+
+const UPLOAD_CATEGORIES = [
+  'Synthesizer', 'Sampler', 'Reverb', 'Delay', 'Dynamics', 'EQ', 'Effect', 'Instrument', 'Utility'
+]
+
+export interface PluginUploadFormState {
+  name: string
+  author?: string
+  version: string
+  description: string
+  category: string
+}
+
+const emptyUploadForm = (withAuthor: boolean): PluginUploadFormState => ({
+  name: '',
+  ...(withAuthor ? { author: '' } : {}),
+  version: '',
+  description: '',
+  category: 'Synthesizer'
+})
+
+export interface PluginUploadFormProps {
+  title: string
+  subtitle: string
+  submitLabel: string
+  /** Показывать поле «Автор» (нужно для официального каталога, не нужно для своих плагинов). */
+  withAuthor?: boolean
+  archiveAccept?: string
+  onSubmit: (
+    form: PluginUploadFormState,
+    archivePath: string,
+    iconPath: string | undefined,
+    uploadId: string
+  ) => Promise<{ ok: boolean; error?: string }>
+  onSuccess: (name: string) => void
+  /** Текст тоста об успехе; по умолчанию — общий "Плагин «{name}» успешно сохранён!". */
+  successMessage?: (name: string) => string
+}
+
+export function PluginUploadForm({
+  title, subtitle, submitLabel, withAuthor, archiveAccept = '.zip,.vst3', onSubmit, onSuccess, successMessage
+}: PluginUploadFormProps) {
+  const { t } = useI18n()
+  const [form, setForm] = useState<PluginUploadFormState>(() => emptyUploadForm(!!withAuthor))
+  const [archivePath, setArchivePath] = useState<string | null>(null)
+  const [iconPath, setIconPath] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null)
+  const { progress, start, reset } = useUploadProgress()
+
+  const showToast = useCallback((message: string, type: ToastType) => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 5000)
+  }, [])
+
+  const update = <K extends keyof PluginUploadFormState>(key: K, value: PluginUploadFormState[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }))
+
+  const resetForm = () => {
+    setForm(emptyUploadForm(!!withAuthor))
+    setArchivePath(null)
+    setIconPath(null)
+  }
+
+  const isValid =
+    form.name.trim() !== '' &&
+    (!withAuthor || (form.author ?? '').trim() !== '') &&
+    form.version.trim() !== '' &&
+    form.description.trim() !== '' &&
+    archivePath !== null
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!isValid || !archivePath) return
+
+    setSubmitting(true)
+    const uploadId = start()
+    try {
+      const result = await onSubmit(form, archivePath, iconPath ?? undefined, uploadId)
+      if (result.ok) {
+        showToast(successMessage ? successMessage(form.name) : t('upload.success', { name: form.name }), 'success')
+        onSuccess(form.name)
+        resetForm()
+      } else {
+        showToast(t('common.errorWithMessage', { error: result.error ?? t('plugin.unknownError') }), 'error')
+      }
+    } catch (err) {
+      showToast(t('common.unexpectedError', { error: String(err) }), 'error')
+    } finally {
+      setSubmitting(false)
+      reset()
+    }
+  }
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-2xl mx-auto px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-txt-primary">{title}</h1>
+          <p className="text-txt-secondary text-sm mt-1">{subtitle}</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="col-span-2">
+              <label className="form-label">{t('upload.pluginName')} *</label>
+              <input
+                type="text"
+                placeholder="My Awesome Plugin"
+                value={form.name}
+                onChange={(e) => update('name', e.target.value)}
+                className="input-field"
+                maxLength={80}
+              />
+            </div>
+            <div>
+              <label className="form-label">{t('common.version')} *</label>
+              <input
+                type="text"
+                placeholder="1.0.0"
+                value={form.version}
+                onChange={(e) => update('version', e.target.value)}
+                className="input-field"
+                maxLength={20}
+              />
+            </div>
+          </div>
+
+          {withAuthor ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">{t('common.author')} *</label>
+                <input
+                  type="text"
+                  placeholder="Developer / Studio"
+                  value={form.author ?? ''}
+                  onChange={(e) => update('author', e.target.value)}
+                  className="input-field"
+                  maxLength={80}
+                />
+              </div>
+              <div>
+                <label className="form-label">{t('common.category')}</label>
+                <select
+                  value={form.category}
+                  onChange={(e) => update('category', e.target.value)}
+                  className="select-field"
+                >
+                  {UPLOAD_CATEGORIES.map((c) => (
+                    <option key={c} value={c} className="bg-app-card">{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="form-label">{t('common.category')}</label>
+              <select
+                value={form.category}
+                onChange={(e) => update('category', e.target.value)}
+                className="select-field"
+              >
+                {UPLOAD_CATEGORIES.map((c) => (
+                  <option key={c} value={c} className="bg-app-card">{c}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="form-label">{t('common.description')} *</label>
+            <textarea
+              placeholder={t('upload.descriptionPlaceholder')}
+              value={form.description}
+              onChange={(e) => update('description', e.target.value)}
+              className="input-field resize-none h-28 leading-relaxed"
+              maxLength={500}
+            />
+            <div className="text-right text-xs text-txt-muted mt-1">{form.description.length}/500</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">{t('upload.archive')} *</label>
+              <FileDropZone
+                label={t('upload.dragZip')}
+                accept={archiveAccept}
+                value={archivePath}
+                onSelect={setArchivePath}
+                hint={t('upload.zipHint')}
+                icon={
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="12" y1="18" x2="12" y2="12" />
+                    <line x1="9" y1="15" x2="15" y2="15" />
+                  </svg>
+                }
+              />
+            </div>
+
+            <div>
+              <label className="form-label">{withAuthor ? t('common.icon') : t('upload.iconOptional')}</label>
+              <FileDropZone
+                label={t('upload.pluginIcon')}
+                accept=".png,.jpg,.jpeg,.webp"
+                value={iconPath}
+                onSelect={setIconPath}
+                hint={t('upload.iconHint')}
+                icon={
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                }
+              />
+            </div>
+          </div>
+
+          {(submitting || progress) && (
+            <UploadSteps step={progress?.step} error={progress?.error} hasIcon={!!iconPath} />
+          )}
+
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-app-border">
+            <button type="button" onClick={resetForm} className="btn-ghost">
+              {t('common.reset')}
+            </button>
+            <button
+              type="submit"
+              disabled={!isValid || submitting}
+              className={`btn-primary min-w-32 flex items-center justify-center gap-2 ${
+                !isValid || submitting ? 'opacity-40 cursor-not-allowed' : ''
+              }`}
+            >
+              {submitting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  {t('upload.stepUpload')}
+                </>
+              ) : (
+                submitLabel
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   )
 }
@@ -299,7 +591,11 @@ function InstallAction({
       ) : (
         <>
           {isError && (
-            <div className="text-[11px] text-status-error bg-red-500/8 border border-red-500/15 rounded-xl px-3 py-2">
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="text-[11px] text-status-error bg-red-500/8 border border-red-500/15 rounded-xl px-3 py-2"
+            >
               {progress?.error ?? t('plugin.unknownError')}
             </div>
           )}
@@ -355,12 +651,57 @@ function InstallAction({
   )
 }
 
+// ─── Confirm Dialog ───────────────────────────────────────────────────────────
+// Общий модальный запрос подтверждения для деструктивных действий (удаление и т.п.).
+
+interface ConfirmDialogProps {
+  title: string
+  body: string
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+export function ConfirmDialog({ title, body, onConfirm, onCancel }: ConfirmDialogProps) {
+  const { t } = useI18n()
+  useEscapeToClose(onCancel)
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-6"
+      style={{ background: 'rgba(0,0,0,0.6)' }}
+      onClick={(e) => { e.stopPropagation(); onCancel() }}
+    >
+      <div
+        className="card relative w-full max-w-sm p-6 animate-slide-up no-drag select-none"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-semibold text-txt-primary">{title}</h3>
+        <p className="text-xs text-txt-secondary leading-relaxed mt-2">{body}</p>
+        <div className="flex justify-end gap-2 mt-5">
+          <button
+            onClick={(e) => { e.stopPropagation(); onCancel() }}
+            className="btn-ghost px-4 py-2 rounded-xl text-xs font-semibold no-drag"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onConfirm() }}
+            className="px-4 py-2 rounded-xl text-xs font-semibold no-drag bg-status-error text-white"
+          >
+            {t('common.confirm')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function PluginCard({
   plugin, progress, onInstall, onDelete, labels, previewUrl, previewLimitSec, previewWetUrl, previewDryUrl, price, onBuy,
   showArchive, onArchive, pending, onOpenDetails, fallbackIcon
 }: PluginCardProps) {
   const { t } = useI18n()
   const [durSec, setDurSec] = useState(0)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   return (
     <div
@@ -379,7 +720,7 @@ export function PluginCard({
       {/* Delete (own) */}
       {onDelete && (
         <button
-          onClick={(e) => { e.stopPropagation(); onDelete(plugin) }}
+          onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true) }}
           title={t('plugin.deleteMine')}
           className="absolute top-2.5 right-2.5 w-7 h-7 flex items-center justify-center rounded-lg
                      text-txt-muted opacity-0 group-hover:opacity-100 hover:text-status-error no-drag"
@@ -389,6 +730,14 @@ export function PluginCard({
         >
           <IconTrash />
         </button>
+      )}
+      {onDelete && confirmingDelete && (
+        <ConfirmDialog
+          title={t('plugin.deleteConfirmTitle')}
+          body={t('plugin.deleteConfirmBody').replace('{name}', plugin.name)}
+          onConfirm={() => { setConfirmingDelete(false); onDelete(plugin) }}
+          onCancel={() => setConfirmingDelete(false)}
+        />
       )}
 
       {/* Header */}
@@ -515,6 +864,8 @@ export function PluginDetailsModal({
   const { t } = useI18n()
   const authorInitial = plugin.author.trim()[0]?.toUpperCase() ?? '?'
   const accent = catDot(plugin.category)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  useEscapeToClose(onClose)
 
   return (
     <div
@@ -529,7 +880,7 @@ export function PluginDetailsModal({
         <div className="absolute top-4 right-4 flex items-center gap-1.5">
           {onDelete && (
             <button
-              onClick={() => onDelete(plugin)}
+              onClick={() => setConfirmingDelete(true)}
               title={t('plugin.deleteMine')}
               className="w-8 h-8 flex items-center justify-center rounded-lg text-txt-muted hover:text-status-error"
               style={{ transition: 'background 150ms, color 120ms' }}
@@ -538,6 +889,14 @@ export function PluginDetailsModal({
             >
               <IconTrash />
             </button>
+          )}
+          {onDelete && confirmingDelete && (
+            <ConfirmDialog
+              title={t('plugin.deleteConfirmTitle')}
+              body={t('plugin.deleteConfirmBody').replace('{name}', plugin.name)}
+              onConfirm={() => { setConfirmingDelete(false); onDelete(plugin) }}
+              onCancel={() => setConfirmingDelete(false)}
+            />
           )}
           <button
             onClick={onClose}

@@ -40,7 +40,7 @@ export function Toggle({ value, onChange, disabled, size = 'md' }: {
         className={`absolute top-1 left-0 ${thumb} rounded-full bg-white`}
         style={{
           boxShadow: '0 1px 3px rgb(0 0 0 / 0.35)',
-          transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+          transition: 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1)',
           transform: value ? `translateX(${onX}px)` : 'translateX(4px)'
         }}
       />

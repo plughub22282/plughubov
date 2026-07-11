@@ -195,7 +195,7 @@ export default function Catalog() {
       {/* ── Content ─────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-5">
         {loadState === 'loading' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
             {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
 
@@ -218,7 +218,7 @@ export default function Catalog() {
           />
 
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-fade-in">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4 animate-fade-in">
             {filtered.map((plugin) => (
               <PluginCard
                 key={plugin.id}

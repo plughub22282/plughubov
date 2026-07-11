@@ -86,6 +86,7 @@ export interface StudioRestoreResult {
   total?: number
   installed?: number
   failed?: Array<{ id: string; error: string }>
+  cancelled?: boolean
   error?: string
 }
 
@@ -373,23 +374,26 @@ const api = {
   // Облачная студия (только премиум)
   studio: {
     list: (): Promise<StudioListResult> => ipcRenderer.invoke('studio:list'),
-    restore: (): Promise<StudioRestoreResult> => ipcRenderer.invoke('studio:restore')
+    restore: (): Promise<StudioRestoreResult> => ipcRenderer.invoke('studio:restore'),
+    restoreCancel: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('studio:restoreCancel')
   },
 
   // Авторская публикация: старый локальный путь загрузки.
   uploadPlugin: (
     meta: UploadMeta,
     filePath: string,
-    iconPath?: string
+    iconPath?: string,
+    uploadId?: string
   ): Promise<{ ok: boolean; path?: string; error?: string }> =>
-    ipcRenderer.invoke('plugins:upload', meta, filePath, iconPath),
+    ipcRenderer.invoke('plugins:upload', meta, filePath, iconPath, uploadId),
   // Официальный каталог: только владелец приложения.
   uploadCatalogPlugin: (
     meta: CatalogUploadMeta,
     filePath: string,
-    iconPath?: string
+    iconPath?: string,
+    uploadId?: string
   ): Promise<{ ok: boolean; id?: string; error?: string }> =>
-    ipcRenderer.invoke('catalog:upload', meta, filePath, iconPath),
+    ipcRenderer.invoke('catalog:upload', meta, filePath, iconPath, uploadId),
 
   // Пользовательский маркетплейс (community)
   listCommunityPlugins: (): Promise<CommunityPlugin[]> => ipcRenderer.invoke('community:list'),

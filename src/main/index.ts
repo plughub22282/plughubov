@@ -1933,11 +1933,16 @@ function registerAppIpc(): void {
   // «Восстановить студию»: последовательно скачиваем и ставим плагины из облака.
   // Только премиум; безлимит по скорости и без суточного лимита. Прогресс — по
   // install:progress (id плагина). Уже установленные пропускаем (идемпотентность).
+  // ponytail: единственный in-flight restore за раз — простой модульный флаг вместо
+  // токена операции; если понадобится параллельный restore на несколько окон, заменить на Map<winId, boolean>.
+  let studioRestoreCancelled = false
+
   ipcMain.handle('studio:restore', async (event) => {
     const blocked = rejectUntrustedSender(event, currentWin)
     if (blocked) return blocked
     const state = await getState()
     if (!state.premium) return { ok: false, error: 'Восстановление студии доступно только с премиумом.' }
+    studioRestoreCancelled = false
     try {
       const { data, error } = await supabase
         .from('plugin_installs')
@@ -1949,17 +1954,26 @@ function registerAppIpc(): void {
 
       let installed = 0
       const failed: Array<{ id: string; error: string }> = []
+      let cancelled = false
       for (const id of ids) {
+        if (studioRestoreCancelled) { cancelled = true; break }
         if (alreadyInstalled[id]) { installed++; continue } // уже стоит — пропускаем
         // countsAgainstQuota=false: премиум, лимита нет.
         const res = await performInstall(id, currentWin, true, false)
         if (res.ok) installed++
         else failed.push({ id, error: res.error ?? 'Ошибка установки' })
       }
-      return { ok: true, total: ids.length, installed, failed }
+      return { ok: true, total: ids.length, installed, failed, cancelled }
     } catch (err: unknown) {
       return { ok: false, error: toSafeError(err, 'Не удалось восстановить студию.', '[ipc] studio:restore error') }
     }
+  })
+
+  ipcMain.handle('studio:restoreCancel', (event) => {
+    const blocked = rejectUntrustedSender(event, currentWin)
+    if (blocked) return blocked
+    studioRestoreCancelled = true
+    return { ok: true }
   })
 
   // ─── IPC: admin catalog upload ───────────────────────────────────────────
@@ -1969,10 +1983,15 @@ function registerAppIpc(): void {
       event,
       meta: { name: string; author: string; version: string; description: string; category: string },
       filePath: string,
-      iconPath?: string
+      iconPath?: string,
+      uploadId?: string
     ) => {
       const blocked = rejectUntrustedSender(event, currentWin)
       if (blocked) return blocked
+
+      const sendProgress = (step: UploadStep, extra?: { message?: string; error?: string }) => {
+        if (uploadId) currentWin.webContents.send('upload:progress', { uploadId, step, ...extra })
+      }
 
       const state = await getState()
       if (!state.isOwner || !state.user) {
@@ -1989,6 +2008,7 @@ function registerAppIpc(): void {
       const archiveKey = `${pluginId}/${slug}-${versionSlug}.zip`
 
       try {
+        sendProgress('validate')
         const archiveSize = await withTimeout(
           validateUploadContent('plugin', filePath),
           VALIDATE_UPLOAD_TIMEOUT_MS,
@@ -1996,6 +2016,7 @@ function registerAppIpc(): void {
         )
         assertUploadSizeLimit(archiveSize)
 
+        sendProgress('upload')
         const archivePresign = await withTimeout(
           presignUpload('catalog', archiveKey, 'application/zip', archiveSize),
           STORAGE_PRESIGN_TIMEOUT_MS,
@@ -2006,6 +2027,7 @@ function registerAppIpc(): void {
 
         let iconUrl: string | undefined
         if (iconPath && existsSync(iconPath)) {
+          sendProgress('icon')
           const { ext: iconExt } = validateIconFile(iconPath)
           const iconKey = `${pluginId}/icon-${ts}.${iconExt}`
           const iconMime = contentTypeForExt(iconExt)
@@ -2018,6 +2040,7 @@ function registerAppIpc(): void {
           iconUrl = iconPresign.publicUrl
         }
 
+        sendProgress('publish')
         const { error: insertError } = await supabase.from('plugins').insert({
           id: pluginId,
           name: meta.name,
@@ -2032,9 +2055,11 @@ function registerAppIpc(): void {
         })
         if (insertError) throw insertError
 
+        sendProgress('done')
         return { ok: true, id: pluginId }
       } catch (err: unknown) {
         const msg = toSafeError(err, 'Не удалось опубликовать каталог.', '[Supabase] catalog:upload error')
+        sendProgress('error', { error: msg })
         return { ok: false, error: msg }
       }
     }
@@ -2047,10 +2072,15 @@ function registerAppIpc(): void {
       event,
       meta: { name: string; version: string; description: string; category: string; tags?: string[] },
       filePath: string,
-      iconPath?: string
+      iconPath?: string,
+      uploadId?: string
     ) => {
       const blocked = rejectUntrustedSender(event, currentWin)
       if (blocked) return blocked
+
+      const sendProgress = (step: UploadStep, extra?: { message?: string; error?: string }) => {
+        if (uploadId) currentWin.webContents.send('upload:progress', { uploadId, step, ...extra })
+      }
 
       // Серверная проверка роли (defense-in-depth): даже если UI-блокировку обойдут,
       // публиковать может только author. Дополнительно это закрыто RLS на стороне БД.
@@ -2069,19 +2099,24 @@ function registerAppIpc(): void {
       const destZip = join(uploadDir, `${slug}-${versionSlug}.zip`)
 
       try {
+        sendProgress('validate')
         await withTimeout(
           validateUploadContent('plugin', filePath),
           VALIDATE_UPLOAD_TIMEOUT_MS,
           VALIDATE_TIMEOUT_MSG
         )
+        sendProgress('upload')
         copyFileSync(filePath, destZip)
         if (iconPath && existsSync(iconPath)) {
+          sendProgress('icon')
           const { ext } = validateIconFile(iconPath)
           copyFileSync(iconPath, join(uploadDir, `${slug}.${ext}`))
         }
+        sendProgress('done')
         return { ok: true, path: destZip }
       } catch (err: unknown) {
         const msg = toSafeError(err, 'Не удалось подготовить плагин к загрузке.', '[ipc] plugins:upload error')
+        sendProgress('error', { error: msg })
         return { ok: false, error: msg }
       }
     }

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import type { AuthUser, ChatMessage } from '../types'
+import { useEscapeToClose } from '../hooks/useEscapeToClose'
 
 interface PremiumChatUser extends AuthUser {
   isPremium?: boolean
@@ -59,6 +60,8 @@ export default function PremiumChat({ user }: { user: PremiumChatUser | null }):
 
   const isPremium = user?.isPremium === true
   const myId = user?.id ?? null
+
+  useEscapeToClose(() => setOpen(false), open)
 
   // Загрузка истории + realtime-подписка. Активны только для premium-пользователя.
   useEffect(() => {
@@ -160,7 +163,7 @@ export default function PremiumChat({ user }: { user: PremiumChatUser | null }):
         </button>
       </header>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3.5">
+      <div ref={scrollRef} role="log" aria-live="polite" className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3.5">
         {loading ? (
           <div className="flex h-full items-center justify-center text-xs text-txt-muted">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-txt-muted/30 border-t-txt-muted" />
@@ -199,7 +202,11 @@ export default function PremiumChat({ user }: { user: PremiumChatUser | null }):
       </div>
 
       {error && !loading && messages.length > 0 && (
-        <div className="flex-shrink-0 border-t border-rose-500/20 bg-rose-500/10 px-3.5 py-1.5 text-[10px] text-rose-300">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex-shrink-0 border-t border-rose-500/20 bg-rose-500/10 px-3.5 py-1.5 text-[10px] text-rose-300"
+        >
           {error}
         </div>
       )}

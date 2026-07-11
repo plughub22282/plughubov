@@ -3,6 +3,7 @@ import type { AssetKind, CommunityPlugin, InstallProgress, Plugin } from '../typ
 import { useI18n } from '../i18n'
 import { useSearch } from '../hooks/useSearch'
 import { useUploadProgress } from '../hooks/useUploadProgress'
+import { useEscapeToClose } from '../hooks/useEscapeToClose'
 import {
   PluginCard, SkeletonCard, Empty, UploadSteps,
   IconRefresh, IconX,
@@ -308,6 +309,8 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
   const [previewPlaying, setPreviewPlaying] = useState(false)
   const [previewVolume, setPreviewVolume] = useState(1)
 
+  useEscapeToClose(onClose)
+
   const update = <K extends keyof UploadForm>(k: K, v: UploadForm[K]) => setForm((p) => ({ ...p, [k]: v }))
 
   const maxPreviewStart = Math.max(0, beatDuration - BEAT_PREVIEW_SECONDS)
@@ -538,7 +541,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <div className="grid grid-cols-3 gap-3">
             <div className={config.hasVersion ? 'col-span-2' : 'col-span-3'}>
-              <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+              <label className="form-label">
                 {t('common.name')} *
               </label>
               <input
@@ -548,7 +551,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
             </div>
             {config.hasVersion && (
               <div>
-                <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+                <label className="form-label">
                   {t('common.version')}
                 </label>
                 <input
@@ -560,7 +563,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+            <label className="form-label">
               {t('common.category')}
             </label>
             <select
@@ -575,7 +578,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
           {config.isPaid && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+                <label className="form-label">
                   {t('common.price')} *
                 </label>
                 <input
@@ -584,7 +587,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+                <label className="form-label">
                   Telegram *
                 </label>
                 <input
@@ -600,7 +603,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+            <label className="form-label">
               {t('common.description')} *
             </label>
             <textarea
@@ -615,7 +618,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
 
           <div className={`grid gap-3 ${showCover ? 'grid-cols-2' : 'grid-cols-1'}`}>
             <div>
-              <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+              <label className="form-label">
                 {t('common.file')} *
               </label>
               <FileDropZone
@@ -626,7 +629,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
             </div>
             {showCover && (
               <div>
-                <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+                <label className="form-label">
                   {t('common.cover')}
                 </label>
                 <FileDropZone
@@ -646,7 +649,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
           {config.kind === 'preset' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+                <label className="form-label">
                   {t('preset.wetFile')} *
                 </label>
                 <FileDropZone
@@ -657,7 +660,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">
+                <label className="form-label">
                   {t('preset.dryFile')} *
                 </label>
                 <FileDropZone
@@ -1250,7 +1253,7 @@ export default function AssetMarket({ kind }: { kind: AssetKind }) {
         )}
 
         {loadState === 'loading' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
             {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
 
@@ -1274,7 +1277,7 @@ export default function AssetMarket({ kind }: { kind: AssetKind }) {
           />
 
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-fade-in">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4 animate-fade-in">
             {filtered.map((asset) => (
               <PluginCard
                 key={asset.id}

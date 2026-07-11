@@ -20,14 +20,7 @@ export default function Vladon({ user, isPremium }: { user: VladonUser | null; i
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <div
-        className="flex-shrink-0 border-b border-app-border/40 px-5 py-4"
-        style={{
-          backgroundColor: 'rgb(var(--panel) / 0.6)',
-          backdropFilter: 'blur(16px) saturate(1.3)',
-          WebkitBackdropFilter: 'blur(16px) saturate(1.3)'
-        }}
-      >
+      <div className="flex-shrink-0 border-b border-app-border/40 bg-app-panel px-5 py-4">
         <div className="flex items-center gap-3">
           <span
             className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl text-accent"

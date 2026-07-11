@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import type { AuthState } from '../types'
+import { ConfirmDialog } from './pluginCommon'
 
 const PREMIUM_BUY_URL = 'https://t.me/soundcrimee'
 
@@ -29,6 +30,8 @@ export default function PremiumActivation(): React.ReactElement {
   const [activatedFor, setActivatedFor] = useState('')
   const [restoring, setRestoring] = useState(false)
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null)
+  const [confirmingRestore, setConfirmingRestore] = useState(false)
+  const [cancellingRestore, setCancellingRestore] = useState(false)
 
   useEffect(() => {
     window.api.auth.getState().then((state: AuthState) => {
@@ -58,6 +61,10 @@ export default function PremiumActivation(): React.ReactElement {
         setRestoreMsg(res.error ?? t('studio.error'))
         return
       }
+      if (res.cancelled) {
+        setRestoreMsg(t('studio.cancelled', { installed: res.installed ?? 0, total: res.total ?? 0 }))
+        return
+      }
       if ((res.total ?? 0) === 0) {
         setRestoreMsg(t('studio.empty'))
         return
@@ -69,8 +76,14 @@ export default function PremiumActivation(): React.ReactElement {
       )
     } finally {
       setRestoring(false)
+      setCancellingRestore(false)
     }
   }, [restoring, t])
+
+  const cancelRestore = useCallback(() => {
+    setCancellingRestore(true)
+    window.api.studio.restoreCancel()
+  }, [])
 
   useEffect(() => {
     if (!justActivated) return
@@ -109,10 +122,8 @@ export default function PremiumActivation(): React.ReactElement {
   return (
     <div
       className={[
-        'relative overflow-hidden rounded-2xl p-[1px]',
-        premium
-          ? 'bg-[linear-gradient(135deg,rgba(250,204,21,.9),rgba(34,211,238,.42),rgba(250,204,21,.72))] shadow-[0_0_38px_rgba(250,204,21,.16)]'
-          : 'bg-app-border/60',
+        'card p-5',
+        premium ? 'border-yellow-300/40' : '',
         justActivated ? 'premium-activation-pop' : ''
       ].join(' ')}
       aria-live="polite"
@@ -121,8 +132,7 @@ export default function PremiumActivation(): React.ReactElement {
         <div className="pointer-events-none absolute inset-0 premium-activation-shine" />
       )}
 
-      <div className="relative rounded-2xl bg-app-card/95 p-5 backdrop-blur-xl">
-        <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3">
           <div
             className={[
               'flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl',
@@ -171,20 +181,38 @@ export default function PremiumActivation(): React.ReactElement {
               <div className="mt-3 rounded-xl border border-app-border/60 bg-app-panel/40 px-3 py-2.5">
                 <div className="text-xs font-semibold text-txt-primary">{t('studio.title')}</div>
                 <p className="mt-0.5 text-[11px] text-txt-muted leading-relaxed">{t('studio.desc')}</p>
-                <button
-                  onClick={restoreStudio}
-                  disabled={restoring}
-                  className="btn-primary mt-2.5 w-full py-2 text-xs disabled:opacity-50"
-                >
-                  {restoring ? (
-                    <>
+                {restoring ? (
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <div className="btn-primary flex-1 py-2 text-xs opacity-50 flex items-center justify-center gap-2">
                       <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       {t('studio.restoring')}
-                    </>
-                  ) : t('studio.restore')}
-                </button>
+                    </div>
+                    <button
+                      onClick={cancelRestore}
+                      disabled={cancellingRestore}
+                      className="btn-ghost flex-shrink-0 px-3 py-2 text-xs disabled:opacity-50"
+                    >
+                      {cancellingRestore ? t('studio.cancelling') : t('studio.cancel')}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmingRestore(true)}
+                    className="btn-primary mt-2.5 w-full py-2 text-xs"
+                  >
+                    {t('studio.restore')}
+                  </button>
+                )}
                 {restoreMsg && (
                   <div className="mt-2 text-[11px] text-txt-secondary leading-relaxed">{restoreMsg}</div>
+                )}
+                {confirmingRestore && (
+                  <ConfirmDialog
+                    title={t('studio.restoreConfirmTitle')}
+                    body={t('studio.restoreConfirmBody')}
+                    onConfirm={() => { setConfirmingRestore(false); restoreStudio() }}
+                    onCancel={() => setConfirmingRestore(false)}
+                  />
                 )}
               </div>
             )}
@@ -236,7 +264,6 @@ export default function PremiumActivation(): React.ReactElement {
             {message.text}
           </div>
         )}
-      </div>
     </div>
   )
 }

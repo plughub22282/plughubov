@@ -31,18 +31,24 @@ function IconCrown(): React.ReactElement {
   )
 }
 
-/** Единый плейсхолдер обложки (ImageWithFallback) в размере/скруглении под конкретное место. */
-function ItemIcon({ item, size = 'w-10 h-10', rounded = 'rounded-xl' }: {
+/** Единый плейсхолдер обложки (ImageWithFallback) в размере/скруглении под конкретное место.
+ * hoverZoom — лёгкое приближение обложки при наведении на родителя (нужен .group на родителе
+ * и overflow-hidden на обёртке, чтобы zoom не вылезал за скруглённые углы). */
+function ItemIcon({ item, size = 'w-10 h-10', rounded = 'rounded-xl', hoverZoom = false }: {
   item: LibraryItem
   size?: string
   rounded?: string
+  hoverZoom?: boolean
 }) {
   return (
     <ImageWithFallback
       src={item.iconUrl}
       alt={item.name}
       seed={item.id}
-      className={`${size} ${rounded} object-cover flex-shrink-0 ring-1 ring-white/10`}
+      className={`${size} ${rounded} object-cover flex-shrink-0 ring-1 ring-white/10${
+        hoverZoom ? ' transition-transform duration-200 group-hover:scale-[1.06]' : ''
+      }`}
+      style={hoverZoom ? { transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)' } : undefined}
     />
   )
 }
@@ -155,7 +161,7 @@ export default function Home({ onNavigate, genre }: { onNavigate: (tab: Tab) => 
         <h1 className="text-sm font-semibold text-txt-primary">{t('nav.home')}</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8">
+      <div className="flex-1 overflow-y-auto px-6 py-6">
         {loading && !loaded ? (
           <div className="flex items-center justify-center h-40 text-xs text-txt-muted">
             <div className="w-4 h-4 mr-2 border-2 border-app-border border-t-accent rounded-full animate-spin" />
@@ -166,31 +172,53 @@ export default function Home({ onNavigate, genre }: { onNavigate: (tab: Tab) => 
         ) : (
           <>
             {dailyDrop.length > 0 && (
-              <section
-                className="rounded-2xl border-2 p-4 -m-4"
-                style={{ borderColor: 'rgb(var(--ac) / 0.4)' }}
-              >
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-semibold text-txt-primary">{t('home.dailyDrop')}</h2>
-                  <span
-                    className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase"
-                    style={{ color: 'rgb(var(--ac))', background: 'rgb(var(--ac) / 0.14)' }}
-                  >
-                    {t('home.dailyDropBadge')}
-                  </span>
-                </div>
-                <p className="text-[11px] text-txt-muted mt-1 mb-4">{t('home.dailyDropSub')}</p>
+              <section>
+                <h2 className="text-lg font-bold tracking-tight text-txt-primary">{t('home.dailyDrop')}</h2>
+                <p className="text-xs text-txt-muted mt-1 mb-5">{t('home.dailyDropSub')}</p>
                 <div className="flex gap-4 overflow-x-auto pb-2">
                   {dailyDrop.map((item) => (
-                    <button
+                    <div
                       key={`daily-${item.tab}-${item.id}`}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onNavigate(item.tab)}
-                      className="flex-shrink-0 w-36 p-4 flex flex-col gap-2.5 text-left no-drag rounded-2xl
-                                 border border-app-border/60 bg-app-card/50
-                                 transition-all duration-200 hover:bg-app-border/20 hover:scale-[1.02]"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          onNavigate(item.tab)
+                        }
+                      }}
+                      className="group card-interactive flex-shrink-0 w-40 p-3.5 flex flex-col gap-3 text-left no-drag
+                                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                      style={{ outlineColor: 'rgb(var(--ac))' }}
                     >
-                      <div className="relative">
-                        <ItemIcon item={item} size="w-full h-24" rounded="rounded-xl" />
+                      <div className="relative overflow-hidden rounded-xl">
+                        <ItemIcon item={item} size="w-full h-28" rounded="rounded-xl" hoverZoom />
+                        {item.previewUrl && (
+                          <>
+                            <div
+                              className="absolute inset-0 bg-black/0 group-hover:bg-black/35"
+                              style={{ transition: 'background-color 200ms cubic-bezier(0.22, 1, 0.36, 1)' }}
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                playTrack({ id: `${item.tab}-${item.id}`, title: item.name, author: item.author, iconUrl: item.iconUrl, url: item.previewUrl! })
+                              }}
+                              title={t('plugin.play')}
+                              className="absolute inset-0 flex items-center justify-center opacity-0 translate-y-1
+                                         group-hover:opacity-100 group-hover:translate-y-0"
+                              style={{ transition: 'opacity 200ms cubic-bezier(0.22, 1, 0.36, 1), transform 200ms cubic-bezier(0.22, 1, 0.36, 1)' }}
+                            >
+                              <span
+                                className="flex h-9 w-9 items-center justify-center rounded-full pl-[1px] text-white shadow-lg"
+                                style={{ background: 'rgb(var(--ac))' }}
+                              >
+                                <IconPlaySmall />
+                              </span>
+                            </button>
+                          </>
+                        )}
                         {item.downloads !== undefined && item.downloads > 0 && (
                           <span
                             className="absolute top-1.5 left-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
@@ -201,33 +229,66 @@ export default function Home({ onNavigate, genre }: { onNavigate: (tab: Tab) => 
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-txt-primary truncate">{item.name}</p>
+                        <p className="text-sm font-semibold text-txt-primary truncate" title={item.name}>{item.name}</p>
                         <p className="text-[10px] text-txt-muted truncate mt-0.5">{item.category}</p>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </section>
             )}
 
-            {/* Для вдохновения */}
-            <section>
+            {/* Для вдохновения — плотнее и тише хиро-полки: меньше карточки, плоский стиль без подъёма/свечения */}
+            <section className="mt-12">
               <h2 className="text-sm font-semibold text-txt-primary">{t('home.forInspiration')}</h2>
               <p className="text-[11px] text-txt-muted mt-1 mb-4">{t('home.forInspirationSub')}</p>
-              <div className="flex gap-4 overflow-x-auto pb-2">
+              <div className="flex gap-3 overflow-x-auto pb-2">
                 {featured.map((item) => (
-                  <button
+                  <div
                     key={`${item.tab}-${item.id}`}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onNavigate(item.tab)}
-                    className="flex-shrink-0 w-36 p-4 flex flex-col gap-2.5 text-left no-drag rounded-2xl
-                               border border-app-border/60 bg-app-card/50
-                               transition-all duration-200 hover:bg-app-border/20 hover:scale-[1.02]"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onNavigate(item.tab)
+                      }
+                    }}
+                    className="group card track-card flex-shrink-0 w-28 p-2.5 flex flex-col gap-2 text-left no-drag cursor-pointer
+                               focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    style={{ outlineColor: 'rgb(var(--ac))' }}
                   >
-                    <div className="relative">
-                      <ItemIcon item={item} size="w-full h-24" rounded="rounded-xl" />
+                    <div className="relative overflow-hidden rounded-lg">
+                      <ItemIcon item={item} size="w-full h-20" rounded="rounded-lg" hoverZoom />
+                      {item.previewUrl && (
+                        <>
+                          <div
+                            className="absolute inset-0 bg-black/0 group-hover:bg-black/35"
+                            style={{ transition: 'background-color 200ms cubic-bezier(0.22, 1, 0.36, 1)' }}
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              playTrack({ id: `${item.tab}-${item.id}`, title: item.name, author: item.author, iconUrl: item.iconUrl, url: item.previewUrl! })
+                            }}
+                            title={t('plugin.play')}
+                            className="absolute inset-0 flex items-center justify-center opacity-0 translate-y-1
+                                       group-hover:opacity-100 group-hover:translate-y-0"
+                            style={{ transition: 'opacity 200ms cubic-bezier(0.22, 1, 0.36, 1), transform 200ms cubic-bezier(0.22, 1, 0.36, 1)' }}
+                          >
+                            <span
+                              className="flex h-7 w-7 items-center justify-center rounded-full pl-[1px] text-white shadow-lg"
+                              style={{ background: 'rgb(var(--ac))' }}
+                            >
+                              <IconPlaySmall />
+                            </span>
+                          </button>
+                        </>
+                      )}
                       {item.downloads !== undefined && item.downloads > 0 && (
                         <span
-                          className="absolute top-1.5 left-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+                          className="absolute top-1 left-1 rounded px-1 py-0.5 text-[9px] font-semibold"
                           style={{ color: 'rgb(var(--ac))', background: 'rgb(var(--card) / 0.85)', border: '1px solid rgb(var(--ac) / 0.3)' }}
                         >
                           {item.downloads}
@@ -235,16 +296,16 @@ export default function Home({ onNavigate, genre }: { onNavigate: (tab: Tab) => 
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-txt-primary truncate">{item.name}</p>
+                      <p className="text-xs font-medium text-txt-primary truncate" title={item.name}>{item.name}</p>
                       <p className="text-[10px] text-txt-muted truncate mt-0.5">{item.category}</p>
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             </section>
 
             {/* В тренде */}
-            <section>
+            <section className="mt-8">
               <h2 className="text-sm font-semibold text-txt-primary">{t('home.trending')}</h2>
               <p className="text-[11px] text-txt-muted mt-1 mb-4">{t('home.trendingSub')}</p>
               {trending.length === 0 ? (
@@ -254,13 +315,23 @@ export default function Home({ onNavigate, genre }: { onNavigate: (tab: Tab) => 
                   {trending.map((item) => (
                     <div
                       key={`${item.tab}-${item.id}`}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onNavigate(item.tab)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          onNavigate(item.tab)
+                        }
+                      }}
                       className="group flex items-center gap-4 px-4 py-2.5 rounded-xl border border-app-border/60
-                                 bg-app-card/50 transition-all duration-200 hover:bg-app-border/20 no-drag cursor-pointer"
+                                 bg-app-card/50 transition-all duration-200 hover:bg-app-border/20 no-drag cursor-pointer
+                                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                      style={{ outlineColor: 'rgb(var(--ac))' }}
                     >
                       <ItemIcon item={item} size="w-9 h-9" rounded="rounded-lg" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-txt-primary truncate">{item.name}</p>
+                        <p className="text-xs font-semibold text-txt-primary truncate" title={item.name}>{item.name}</p>
                         <p className="text-[10px] text-txt-muted truncate mt-0.5">{item.author}</p>
                       </div>
                       {item.downloads !== undefined && (
@@ -287,7 +358,7 @@ export default function Home({ onNavigate, genre }: { onNavigate: (tab: Tab) => 
             </section>
 
             {/* Лучшие авторы */}
-            <section>
+            <section className="mt-5">
               <h2 className="text-sm font-semibold text-txt-primary">{t('home.topAuthors')}</h2>
               <p className="text-[11px] text-txt-muted mt-1 mb-4">{t('home.topAuthorsSub')}</p>
               {topAuthors.length === 0 ? (
@@ -314,7 +385,7 @@ export default function Home({ onNavigate, genre }: { onNavigate: (tab: Tab) => 
                         {author.author.trim()[0]?.toUpperCase() ?? '?'}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-txt-primary truncate">{author.author}</p>
+                        <p className="text-xs font-semibold text-txt-primary truncate" title={author.author}>{author.author}</p>
                         <p className="text-[10px] text-txt-muted mt-0.5">{t('home.publicationsCount', { count: author.count })}</p>
                       </div>
                       <span className="flex items-center gap-1 text-[11px] font-medium text-txt-secondary flex-shrink-0">

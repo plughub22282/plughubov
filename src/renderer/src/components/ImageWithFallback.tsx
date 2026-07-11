@@ -16,6 +16,7 @@ export interface ImageWithFallbackProps {
   src?: string
   alt: string
   className: string
+  style?: React.CSSProperties
   /** Уникальный идентификатор ассета — определяет градиент плейсхолдера (стабильно между рендерами). */
   seed: string
   /** Иконка типа контента поверх градиента (по умолчанию — нейтральный диск/нота). */
@@ -27,14 +28,14 @@ export interface ImageWithFallbackProps {
  * картинки рендерится градиентный плейсхолдер (цвет зависит от seed) с иконкой
  * типа контента — вместо одного и того же серого блока для всех карточек.
  */
-export function ImageWithFallback({ src, alt, className, seed, icon }: ImageWithFallbackProps): React.ReactElement {
+export function ImageWithFallback({ src, alt, className, style, seed, icon }: ImageWithFallbackProps): React.ReactElement {
   const [failed, setFailed] = useState(false)
 
   if (!src || failed) {
     return (
       <div
         className={`${className} flex items-center justify-center select-none text-white/90`}
-        style={{ background: gradientFor(seed) }}
+        style={{ background: gradientFor(seed), ...style }}
       >
         {icon ?? <IconDiscNote />}
       </div>
@@ -46,7 +47,10 @@ export function ImageWithFallback({ src, alt, className, seed, icon }: ImageWith
       src={src}
       alt={alt}
       className={className}
+      style={style}
       draggable={false}
+      loading="lazy"
+      decoding="async"
       onError={() => setFailed(true)}
     />
   )

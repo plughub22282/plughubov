@@ -401,15 +401,7 @@ export default function App(): React.ReactElement {
           >
             <IconLogo />
           </span>
-          <span
-            className="text-[14px] font-bold tracking-[0.04em] select-none"
-            style={{
-              background: 'linear-gradient(135deg, rgb(var(--ac)), rgb(var(--ac-h)))',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text'
-            }}
-          >
+          <span className="text-[14px] font-bold tracking-[0.04em] select-none text-accent">
             PlugHub
           </span>
         </div>
@@ -695,16 +687,19 @@ declare global {
       studio: {
         list: () => Promise<import('./types').StudioListResult>
         restore: () => Promise<import('./types').StudioRestoreResult>
+        restoreCancel: () => Promise<{ ok: boolean }>
       }
       uploadPlugin: (
         meta: import('./types').UploadMeta,
         filePath: string,
-        iconPath?: string
+        iconPath?: string,
+        uploadId?: string
       ) => Promise<{ ok: boolean; path?: string; error?: string }>
       uploadCatalogPlugin: (
         meta: import('./types').CatalogUploadMeta,
         filePath: string,
-        iconPath?: string
+        iconPath?: string,
+        uploadId?: string
       ) => Promise<{ ok: boolean; id?: string; error?: string }>
       listCommunityPlugins: () => Promise<import('./types').CommunityPlugin[]>
       uploadCommunityPlugin: (

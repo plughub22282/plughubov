@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useI18n } from '../i18n'
+import { useEscapeToClose } from '../hooks/useEscapeToClose'
 
 type Step = 'value' | 'daw' | 'genre' | 'done'
 
@@ -40,6 +41,9 @@ export default function Onboarding({
   const [error, setError] = useState<string | null>(null)
   const [pendingGenre, setPendingGenre] = useState<string | null>(null)
 
+  const skip = () => (step === 'daw' ? setStep('genre') : void persist(null))
+  useEscapeToClose(skip, step !== 'value' && step !== 'done' && !busy)
+
   const persist = async (finalGenre: string | null) => {
     setBusy(true)
     setError(null)
@@ -59,18 +63,12 @@ export default function Onboarding({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-6 backdrop-blur-sm bg-black/50">
       <div className="w-full max-w-[360px] animate-slide-up">
-        <div className="card p-6 relative overflow-hidden">
-          <div
-            className="absolute -inset-3 rounded-3xl blur-2xl opacity-20 pointer-events-none"
-            style={{ background: 'radial-gradient(circle, rgb(var(--ac) / 0.6), transparent)' }}
-          />
-
-          <div className="relative">
+        <div className="card p-6">
             {step !== 'value' && step !== 'done' && (
               <div className="flex justify-end mb-3">
                 <button
                   type="button"
-                  onClick={() => (step === 'daw' ? setStep('genre') : void persist(null))}
+                  onClick={skip}
                   disabled={busy}
                   className="text-xs text-txt-muted hover:text-txt-secondary no-drag disabled:opacity-40"
                 >
@@ -136,7 +134,6 @@ export default function Onboarding({
                 </button>
               </div>
             )}
-          </div>
         </div>
       </div>
     </div>

@@ -151,9 +151,8 @@ export default function ReferralProgram({
   const progressInBlock = qualified % perReward
 
   return (
-    <div className="relative overflow-hidden rounded-2xl p-[1px] bg-app-border/60">
-      <div className="relative rounded-2xl bg-app-card/95 p-5 backdrop-blur-xl">
-        <div className="flex items-start gap-3">
+    <div className="card p-5">
+      <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
             <IconGift />
           </div>
@@ -283,6 +282,5 @@ export default function ReferralProgram({
           </div>
         </div>
       </div>
-    </div>
   )
 }

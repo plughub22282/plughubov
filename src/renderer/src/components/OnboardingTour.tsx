@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
+import { useEscapeToClose } from '../hooks/useEscapeToClose'
 
 const TOUR_STEPS: Record<string, string> = {
   'sidebar-sections': 'sidebarSections',
@@ -25,6 +26,8 @@ export default function OnboardingTour({ onFinish }: { onFinish: () => void }): 
   const { t } = useI18n()
   const [steps] = useState<Spot[]>(measureSteps)
   const [index, setIndex] = useState(0)
+
+  useEscapeToClose(onFinish)
 
   // Позиции элементов не пересчитываем на resize — при смене размеров окна просто закрываем тур.
   useEffect(() => {

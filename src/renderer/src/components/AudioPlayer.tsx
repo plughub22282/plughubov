@@ -574,19 +574,16 @@ export function PresetComparePlayer({ wetUrl, dryUrl, onDuration, stickers }: Pr
   return stickers && stickers.length > 0 ? (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap gap-1.5 px-0.5">
-        {stickers.slice(0, 2).map((label, i) => (
+        {stickers.slice(0, 2).map((label) => (
           <span
             key={label}
-            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium select-none"
+            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium select-none"
             style={{
               color: 'rgb(var(--ac))',
               background: 'rgb(var(--ac) / 0.12)',
-              border: '1px solid rgb(var(--ac) / 0.28)',
-              boxShadow: '0 0 10px rgb(var(--ac) / 0.22)',
-              transform: `rotate(${i % 2 === 0 ? -4 : 3}deg)`
+              border: '1px solid rgb(var(--ac) / 0.28)'
             }}
           >
-            <span aria-hidden>✨</span>
             {label}
           </span>
         ))}
