@@ -596,7 +596,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
                 />
               </div>
               {/* Free-авторы: цена строго $2–$15 и до 3 битов в месяц. Премиум — свободно. */}
-              <p className="col-span-2 text-[11px] text-txt-muted -mt-1.5">
+              <p className="col-span-2 text-2xs text-txt-muted -mt-1.5">
                 {premium ? t('asset.buyerHint') : t('asset.freeBeatHint')}
               </p>
             </div>
@@ -697,14 +697,14 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
                       <p className="text-xs font-semibold text-txt-secondary uppercase tracking-wider">
                         {t('asset.selectPreview')} *
                       </p>
-                      <p className="text-[11px] text-txt-muted mt-0.5">
+                      <p className="text-2xs text-txt-muted mt-0.5">
                         {t('asset.previewPublishedOnly')}
                       </p>
                     </div>
                   </div>
                 </div>
                 {beatStatus === 'loading' && (
-                  <span className="text-[11px] text-txt-muted flex items-center gap-1.5 px-2 py-1 rounded-lg border border-app-border/50">
+                  <span className="text-2xs text-txt-muted flex items-center gap-1.5 px-2 py-1 rounded-lg border border-app-border/50">
                     <span className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
                     {t('asset.analyzing')}
                   </span>
@@ -729,15 +729,15 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
                 <div className="space-y-3.5">
                   <div className="grid grid-cols-3 gap-2">
                     <div className="rounded-xl border border-app-border/60 bg-app-panel/45 px-3 py-2">
-                      <p className="text-[10px] text-txt-muted uppercase font-semibold tracking-wider">{t('asset.start')}</p>
+                      <p className="text-2xs text-txt-muted uppercase font-semibold tracking-wider">{t('asset.start')}</p>
                       <p className="text-sm font-semibold text-txt-primary tabular-nums mt-0.5">{fmtTime(previewStart)}</p>
                     </div>
                     <div className="rounded-xl border border-accent/30 px-3 py-2" style={{ background: 'rgb(var(--ac) / 0.10)' }}>
-                      <p className="text-[10px] text-txt-muted uppercase font-semibold tracking-wider">{t('asset.preview')}</p>
+                      <p className="text-2xs text-txt-muted uppercase font-semibold tracking-wider">{t('asset.preview')}</p>
                       <p className="text-sm font-semibold text-accent tabular-nums mt-0.5">{t('asset.seconds', { count: BEAT_PREVIEW_SECONDS })}</p>
                     </div>
                     <div className="rounded-xl border border-app-border/60 bg-app-panel/45 px-3 py-2 text-right">
-                      <p className="text-[10px] text-txt-muted uppercase font-semibold tracking-wider">{t('asset.end')}</p>
+                      <p className="text-2xs text-txt-muted uppercase font-semibold tracking-wider">{t('asset.end')}</p>
                       <p className="text-sm font-semibold text-txt-primary tabular-nums mt-0.5">{fmtTime(previewEnd)}</p>
                     </div>
                   </div>
@@ -749,7 +749,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
                       background: 'linear-gradient(180deg, rgb(var(--panel) / 0.72), rgb(var(--card) / 0.42))'
                     }}
                   >
-                    <div className="absolute left-3 right-3 top-3 flex justify-between text-[10px] text-txt-muted tabular-nums">
+                    <div className="absolute left-3 right-3 top-3 flex justify-between text-2xs text-txt-muted tabular-nums">
                       <span>0:00</span>
                       <span>{fmtTime(beatDuration)}</span>
                     </div>
@@ -865,7 +865,7 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
                         />
                       </div>
                     </div>
-                    <span className="text-[11px] text-txt-muted text-right leading-relaxed">
+                    <span className="text-2xs text-txt-muted text-right leading-relaxed">
                       {t('asset.dragSelectionHint')}
                     </span>
                   </div>
@@ -1139,7 +1139,7 @@ export default function AssetMarket({ kind }: { kind: AssetKind }) {
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold text-txt-primary flex-shrink-0">{config.title}</h1>
 
-          <div className={`flex items-center gap-1.5 text-[11px] ${
+          <div className={`flex items-center gap-1.5 text-2xs ${
             loadState === 'loading' ? 'text-txt-muted' : loadState === 'ok' ? 'text-status-success' : 'text-status-error'
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${
@@ -1181,7 +1181,7 @@ export default function AssetMarket({ kind }: { kind: AssetKind }) {
               <button
                 key={cat}
                 onClick={() => setCategory(cat)}
-                className={`text-[11px] px-2.5 py-1 rounded-lg font-medium no-drag ${
+                className={`text-2xs px-2.5 py-1 rounded-lg font-medium no-drag ${
                   category === cat ? 'text-white' : 'text-txt-muted border border-app-border/60'
                 }`}
                 style={

@@ -133,7 +133,7 @@ export default function PremiumChat({ user }: { user: PremiumChatUser | null }):
       >
         <IconChat />
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-[rgb(var(--btn-primary-text))] shadow-[0_0_12px_rgb(var(--ac)_/_0.7)]">
+          <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent px-1 text-2xs font-bold text-[rgb(var(--btn-primary-text))] shadow-[0_0_12px_rgb(var(--ac)_/_0.7)]">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
@@ -150,7 +150,7 @@ export default function PremiumChat({ user }: { user: PremiumChatUser | null }):
           </span>
           <div className="min-w-0">
             <h2 className="truncate text-sm font-bold text-txt-primary">{t('chat.title')}</h2>
-            <p className="truncate text-[10px] text-txt-muted">{t('chat.subtitle')}</p>
+            <p className="truncate text-2xs text-txt-muted">{t('chat.subtitle')}</p>
           </div>
         </div>
         <button
@@ -187,10 +187,10 @@ export default function PremiumChat({ user }: { user: PremiumChatUser | null }):
                     ].join(' ')}
                   >
                     {!mine && (
-                      <div className="mb-0.5 text-[10px] font-bold text-accent/90">{message.author}</div>
+                      <div className="mb-0.5 text-2xs font-bold text-accent/90">{message.author}</div>
                     )}
                     <div className="whitespace-pre-wrap break-words leading-relaxed">{message.text}</div>
-                    <div className={`mt-1 text-[9px] ${mine ? 'opacity-70' : 'text-txt-muted'}`}>
+                    <div className={`mt-1 text-2xs ${mine ? 'opacity-70' : 'text-txt-muted'}`}>
                       {fmtTime(message.createdAt)}
                     </div>
                   </div>
@@ -205,7 +205,7 @@ export default function PremiumChat({ user }: { user: PremiumChatUser | null }):
         <div
           role="alert"
           aria-live="assertive"
-          className="flex-shrink-0 border-t border-rose-500/20 bg-rose-500/10 px-3.5 py-1.5 text-[10px] text-rose-300"
+          className="flex-shrink-0 border-t border-rose-500/20 bg-rose-500/10 px-3.5 py-1.5 text-2xs text-rose-300"
         >
           {error}
         </div>

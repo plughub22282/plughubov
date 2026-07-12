@@ -191,7 +191,7 @@ export default function KeyManager(): React.ReactElement {
                   {c.note && <span className="text-xs text-txt-muted truncate max-w-[140px]">{c.note}</span>}
                   {c.durationDays && (
                     <span
-                      className="text-[10px] text-txt-muted flex-shrink-0 px-2 py-0.5 rounded-full border border-app-border/60"
+                      className="text-2xs text-txt-muted flex-shrink-0 px-2 py-0.5 rounded-full border border-app-border/60"
                       title={t('keys.duration')}
                     >
                       {t('keys.durationDays', { days: c.durationDays })}
@@ -200,20 +200,20 @@ export default function KeyManager(): React.ReactElement {
                   {c.redeemed ? (
                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
                       <span
-                        className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                        className="text-2xs font-semibold px-2 py-0.5 rounded-full"
                         style={{ background: 'rgb(120 120 130 / 0.18)', color: 'rgb(150 150 160)' }}
                       >
                         {t('common.redeemed', { date: formatDate(c.redeemedAt, language) })}
                       </span>
                       {c.redeemedBy && (
-                        <span className="text-[10px] text-txt-muted max-w-[180px] truncate">
+                        <span className="text-2xs text-txt-muted max-w-[180px] truncate">
                           Активирован: {c.redeemedBy}
                         </span>
                       )}
                     </div>
                   ) : (
                     <span
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                      className="text-2xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
                       style={{ background: 'rgb(var(--ac) / 0.18)', color: 'rgb(var(--ac))' }}
                     >
                       {t('common.free')}

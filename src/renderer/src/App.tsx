@@ -401,7 +401,7 @@ export default function App(): React.ReactElement {
           >
             <IconLogo />
           </span>
-          <span className="text-[14px] font-bold tracking-[0.04em] select-none text-accent">
+          <span className="text-sm font-bold tracking-[0.04em] select-none text-accent">
             PlugHub
           </span>
         </div>
@@ -568,7 +568,7 @@ export default function App(): React.ReactElement {
                   {/* Верификационная галочка премиума (без текстовой плашки, п.6). */}
                   {isPremium && <PremiumBadge size={13} title={t('premium.verifiedTitle')} />}
                 </div>
-                <div className="text-[10px] mt-0.5 flex items-center gap-1">
+                <div className="text-2xs mt-0.5 flex items-center gap-1">
                   <span className="text-txt-muted">{isAuthor ? t('role.author') : t('role.user')}</span>
                 </div>
               </div>

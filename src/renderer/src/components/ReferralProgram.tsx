@@ -193,18 +193,18 @@ export default function ReferralProgram({
             <div className="mt-3 grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-app-border/60 bg-app-panel/40 px-3 py-2">
                 <div className="text-lg font-semibold text-txt-primary">{stats.invited ?? 0}</div>
-                <div className="text-[11px] text-txt-muted">{t('referral.invited')}</div>
+                <div className="text-2xs text-txt-muted">{t('referral.invited')}</div>
               </div>
               <div className="rounded-xl border border-app-border/60 bg-app-panel/40 px-3 py-2">
                 <div className="text-lg font-semibold text-txt-primary">{qualified}</div>
-                <div className="text-[11px] text-txt-muted">{t('referral.qualified')}</div>
+                <div className="text-2xs text-txt-muted">{t('referral.qualified')}</div>
               </div>
             </div>
 
             {/* Прогресс до следующей награды */}
             {rewardsAvailable === 0 && (
               <div className="mt-3">
-                <div className="flex items-center justify-between text-[11px] text-txt-muted">
+                <div className="flex items-center justify-between text-2xs text-txt-muted">
                   <span>{t('referral.progressToNext', { have: progressInBlock, need: perReward })}</span>
                 </div>
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-app-panel/60">
@@ -240,7 +240,7 @@ export default function ReferralProgram({
             {/* Активировать код друга */}
             {!stats.referred && (
               <div className="mt-3 flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-[11px] text-txt-muted">
+                <div className="flex items-center gap-2 text-2xs text-txt-muted">
                   <div className="h-px flex-1 bg-app-border/50" />
                   {t('referral.haveCode')}
                   <div className="h-px flex-1 bg-app-border/50" />
@@ -276,7 +276,7 @@ export default function ReferralProgram({
               </div>
             )}
 
-            <p className="mt-3 text-[10px] leading-relaxed text-txt-muted/80">
+            <p className="mt-3 text-2xs leading-relaxed text-txt-muted/80">
               {t('referral.antiAbuseNote')}
             </p>
           </div>

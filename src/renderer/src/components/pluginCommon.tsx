@@ -125,7 +125,7 @@ export function SearchField({
 export function ProgressBar({ pct, label }: { pct: number; label: string }) {
   return (
     <div className="mt-2">
-      <div className="flex justify-between items-center text-[11px] mb-1.5">
+      <div className="flex justify-between items-center text-2xs mb-1.5">
         <span className="text-txt-muted">{label}</span>
         <span className="font-medium text-accent">{pct}%</span>
       </div>
@@ -203,7 +203,7 @@ export function UploadSteps({ step, error, hasIcon }: {
         <div
           role="alert"
           aria-live="assertive"
-          className="text-[11px] text-status-error bg-red-500/8 border border-red-500/15 rounded-xl px-3 py-2 mt-1"
+          className="text-2xs text-status-error bg-red-500/8 border border-red-500/15 rounded-xl px-3 py-2 mt-1"
         >
           {error ?? t('plugin.unknownError')}
         </div>
@@ -594,7 +594,7 @@ function InstallAction({
             <div
               role="alert"
               aria-live="assertive"
-              className="text-[11px] text-status-error bg-red-500/8 border border-red-500/15 rounded-xl px-3 py-2"
+              className="text-2xs text-status-error bg-red-500/8 border border-red-500/15 rounded-xl px-3 py-2"
             >
               {progress?.error ?? t('plugin.unknownError')}
             </div>
@@ -760,19 +760,19 @@ export function PluginCard({
               className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
               style={{ background: catDot(plugin.category) }}
             />
-            <span className="text-[11px] text-txt-muted truncate min-w-0">
+            <span className="text-2xs text-txt-muted truncate min-w-0">
               {plugin.category} · {plugin.author}
             </span>
             {/* Верификационная галочка автора-премиума (п.6). */}
             {plugin.authorIsPremium && <PremiumBadge size={11} />}
             {plugin.version && (
-              <span className="text-[11px] text-txt-muted flex-shrink-0">· v{plugin.version}</span>
+              <span className="text-2xs text-txt-muted flex-shrink-0">· v{plugin.version}</span>
             )}
           </div>
         </div>
 
         {!onDelete && (
-          <span className="text-[10px] text-txt-muted flex-shrink-0 pt-1">{plugin.size}</span>
+          <span className="text-2xs text-txt-muted flex-shrink-0 pt-1">{plugin.size}</span>
         )}
       </div>
 
@@ -786,7 +786,7 @@ export function PluginCard({
           {plugin.tags.slice(0, 5).map((tag) => (
             <span
               key={tag}
-              className="rounded-md border border-accent/20 bg-accent/8 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+              className="rounded-md border border-accent/20 bg-accent/8 px-1.5 py-0.5 text-2xs font-medium text-accent"
             >
               #{tag.replace(/^#/, '')}
             </span>
@@ -796,7 +796,7 @@ export function PluginCard({
 
       {/* Meta row: длительность · размер · скачивания */}
       {plugin.downloads !== undefined && (
-        <div className="flex items-center gap-3 text-[11px] text-txt-muted -mt-1 flex-wrap">
+        <div className="flex items-center gap-3 text-2xs text-txt-muted -mt-1 flex-wrap">
           <span className="flex items-center gap-1">
             <IconDownloads /> {plugin.downloads}
           </span>
@@ -926,7 +926,7 @@ export function PluginDetailsModal({
           <div className="min-w-0 pt-1">
             <h2 className="text-lg font-bold text-txt-primary leading-snug">{plugin.name}</h2>
             <span
-              className="mt-2 inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg font-medium"
+              className="mt-2 inline-flex items-center gap-1.5 text-2xs px-2 py-1 rounded-lg font-medium"
               style={{ color: 'rgb(var(--ac))', background: 'rgb(var(--ac) / 0.1)', border: '1px solid rgb(var(--ac) / 0.22)' }}
             >
               <IconGear />
@@ -940,7 +940,7 @@ export function PluginDetailsModal({
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 min-w-0">
               <span
-                className="w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-white"
+                className="w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center text-2xs font-bold text-white"
                 style={{ background: accent }}
               >
                 {authorInitial}
@@ -948,7 +948,7 @@ export function PluginDetailsModal({
               <span className="text-xs font-semibold text-txt-primary truncate">{plugin.author}</span>
               {plugin.authorIsPremium && <PremiumBadge size={11} />}
             </div>
-            <p className="text-[10px] text-txt-muted uppercase tracking-wide mt-1.5">{t('plugin.developer')}</p>
+            <p className="text-2xs text-txt-muted mt-1.5">{t('plugin.developer')}</p>
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1 text-xs font-semibold text-txt-primary">
@@ -957,13 +957,13 @@ export function PluginDetailsModal({
               </svg>
               {t('plugin.builtIn')}
             </div>
-            <p className="text-[10px] text-txt-muted uppercase tracking-wide mt-1.5">{t('plugin.activation')}</p>
+            <p className="text-2xs text-txt-muted mt-1.5">{t('plugin.activation')}</p>
           </div>
           <div className="min-w-0 text-right">
             <p className="text-xs font-semibold text-txt-primary tabular-nums">
               {plugin.version ? `v${plugin.version}` : '—'}
             </p>
-            <p className="text-[10px] text-txt-muted uppercase tracking-wide mt-1.5">{t('common.version')}</p>
+            <p className="text-2xs text-txt-muted mt-1.5">{t('common.version')}</p>
           </div>
         </div>
 
@@ -984,7 +984,7 @@ export function PluginDetailsModal({
 
         <div className="mt-5 pt-4 border-t border-app-border/50">
           <h3
-            className="text-xs font-semibold text-txt-secondary uppercase tracking-wider pb-2 mb-3 border-b-2 inline-block"
+            className="text-xs font-semibold text-txt-secondary pb-2 mb-3 border-b-2 inline-block"
             style={{ borderColor: 'rgb(var(--ac))' }}
           >
             {t('common.description')}
@@ -997,7 +997,7 @@ export function PluginDetailsModal({
               {plugin.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-md border border-accent/20 bg-accent/8 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+                  className="rounded-md border border-accent/20 bg-accent/8 px-1.5 py-0.5 text-2xs font-medium text-accent"
                 >
                   #{tag.replace(/^#/, '')}
                 </span>

@@ -56,7 +56,7 @@ export default function AuthScreen({
                 </svg>
               </div>
             </div>
-            <h1 className="text-[26px] font-bold tracking-tight text-txt-primary">PlugHub</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-txt-primary">PlugHub</h1>
             <p className="text-sm text-txt-secondary mt-1.5">
               {connecting ? t('auth.waiting') : t('auth.subtitle')}
             </p>
@@ -115,7 +115,7 @@ export default function AuthScreen({
                   {t('auth.signIn')}
                 </button>
 
-                <p className="text-[11px] text-txt-muted text-center leading-relaxed">
+                <p className="text-2xs text-txt-muted text-center leading-relaxed">
                   {t('auth.privacy').split('\n').map((line, index) => (
                     <React.Fragment key={line}>
                       {index > 0 && <br />}

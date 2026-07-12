@@ -65,7 +65,7 @@ export function HashtagInput({ value, onChange, disabled }: HashtagInputProps) {
         <label className="form-label mb-0">
           {t('hashtags.label')}
         </label>
-        <span className="text-[11px] text-txt-muted tabular-nums">
+        <span className="text-2xs text-txt-muted tabular-nums">
           {value.length}/{MAX_HASHTAGS}
         </span>
       </div>
@@ -102,7 +102,7 @@ export function HashtagInput({ value, onChange, disabled }: HashtagInputProps) {
         />
       </div>
 
-      <div className={`mt-1 text-[11px] ${error ? 'text-status-error' : 'text-txt-muted'}`}>
+      <div className={`mt-1 text-2xs ${error ? 'text-status-error' : 'text-txt-muted'}`}>
         {error || t('hashtags.hint')}
       </div>
     </div>

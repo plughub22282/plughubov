@@ -148,7 +148,7 @@ export default function PremiumActivation(): React.ReactElement {
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-sm font-semibold text-txt-primary">{t('premium.title')}</h2>
               {premium && (
-                <span className="rounded-full border border-yellow-300/40 bg-yellow-300/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-yellow-200">
+                <span className="rounded-full border border-yellow-300/40 bg-yellow-300/15 px-2 py-0.5 text-2xs font-bold uppercase tracking-wide text-yellow-200">
                   {t('premium.active')}
                 </span>
               )}
@@ -163,11 +163,11 @@ export default function PremiumActivation(): React.ReactElement {
                 <div className="text-xs font-semibold text-yellow-200">
                   {justActivated ? t('premium.activationTitle') : t('premium.active')}
                 </div>
-                <div className="mt-0.5 text-[11px] text-txt-secondary">
+                <div className="mt-0.5 text-2xs text-txt-secondary">
                   {t('premium.activatedFor', { user: activationLabel })}
                 </div>
                 {premiumUntil && (
-                  <div className="mt-0.5 text-[11px] text-txt-muted">
+                  <div className="mt-0.5 text-2xs text-txt-muted">
                     {t('premium.validUntil', {
                       date: new Date(premiumUntil).toLocaleDateString()
                     })}
@@ -180,7 +180,7 @@ export default function PremiumActivation(): React.ReactElement {
             {premium && (
               <div className="mt-3 rounded-xl border border-app-border/60 bg-app-panel/40 px-3 py-2.5">
                 <div className="text-xs font-semibold text-txt-primary">{t('studio.title')}</div>
-                <p className="mt-0.5 text-[11px] text-txt-muted leading-relaxed">{t('studio.desc')}</p>
+                <p className="mt-0.5 text-2xs text-txt-muted leading-relaxed">{t('studio.desc')}</p>
                 {restoring ? (
                   <div className="mt-2.5 flex items-center gap-2">
                     <div className="btn-primary flex-1 py-2 text-xs opacity-50 flex items-center justify-center gap-2">
@@ -204,7 +204,7 @@ export default function PremiumActivation(): React.ReactElement {
                   </button>
                 )}
                 {restoreMsg && (
-                  <div className="mt-2 text-[11px] text-txt-secondary leading-relaxed">{restoreMsg}</div>
+                  <div className="mt-2 text-2xs text-txt-secondary leading-relaxed">{restoreMsg}</div>
                 )}
                 {confirmingRestore && (
                   <ConfirmDialog
@@ -228,7 +228,7 @@ export default function PremiumActivation(): React.ReactElement {
               {t('premium.buy')}
             </button>
 
-            <div className="flex items-center gap-2 text-[11px] text-txt-muted">
+            <div className="flex items-center gap-2 text-2xs text-txt-muted">
               <div className="h-px flex-1 bg-app-border/50" />
               {t('premium.haveCode')}
               <div className="h-px flex-1 bg-app-border/50" />

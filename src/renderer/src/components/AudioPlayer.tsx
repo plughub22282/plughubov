@@ -51,6 +51,67 @@ function makeWaveform(seedValue: string, count = 72): number[] {
   })
 }
 
+/**
+ * Затухающая «рябь» по волне при наведении: бары рядом с курсором получают импульс
+ * и гаснут экспоненциально через requestAnimationFrame — имитация физики звуковой волны.
+ * Пишет напрямую в DOM (CSS-переменная --ripple), минуя React, чтобы не триггерить
+ * ре-рендер на каждый кадр. Отключается целиком при prefers-reduced-motion.
+ */
+function attachWaveRipple(container: HTMLElement): () => void {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return () => {}
+
+  const bars = Array.from(container.querySelectorAll<HTMLElement>('.wave-bar'))
+  const barCount = bars.length / 2
+  if (!barCount) return () => {}
+
+  const energy = new Float32Array(barCount)
+  const targetEnergy = new Float32Array(barCount)
+  let rafId: number | null = null
+  let lastX: number | null = null
+
+  const tick = (): void => {
+    let alive = false
+    for (let i = 0; i < barCount; i++) {
+      // Плавно тянемся к цели (новый импульс) и одновременно затухаем — без рывка на снимке.
+      energy[i] += (targetEnergy[i] - energy[i]) * 0.35
+      targetEnergy[i] *= 0.88
+      if (energy[i] < 0.002 && targetEnergy[i] < 0.002) energy[i] = targetEnergy[i] = 0
+      else alive = true
+      const value = energy[i].toFixed(3)
+      bars[i].style.setProperty('--ripple', value)
+      bars[i + barCount].style.setProperty('--ripple', value)
+    }
+    rafId = alive ? requestAnimationFrame(tick) : null
+    if (!alive) container.classList.remove('wave-rippling')
+  }
+
+  const onPointerMove = (event: PointerEvent): void => {
+    // Игнорируем дрожание мыши на месте — эффект реагирует только на осмысленное движение.
+    if (lastX !== null && Math.abs(event.clientX - lastX) < 2) return
+    lastX = event.clientX
+
+    const rect = container.getBoundingClientRect()
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+    const center = ratio * (barCount - 1)
+    const radius = 5
+    const from = Math.max(0, Math.floor(center - radius))
+    const to = Math.min(barCount - 1, Math.ceil(center + radius))
+    for (let i = from; i <= to; i++) {
+      const impulse = Math.max(0, 1 - Math.abs(i - center) / radius) * 0.55
+      targetEnergy[i] = Math.max(targetEnergy[i], impulse)
+    }
+    container.classList.add('wave-rippling')
+    if (rafId === null) rafId = requestAnimationFrame(tick)
+  }
+
+  container.addEventListener('pointermove', onPointerMove)
+  return () => {
+    container.removeEventListener('pointermove', onPointerMove)
+    if (rafId !== null) cancelAnimationFrame(rafId)
+    container.classList.remove('wave-rippling')
+  }
+}
+
 function IconPlay(): React.ReactElement {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -105,6 +166,13 @@ export function AudioPlayerBar({ url, onDuration, limitSec }: AudioPlayerBarProp
   const [volume, setVolume] = useState(1)
   const [muted, setMuted] = useState(false)
   const waveform = useRef(makeWaveform(url))
+  const waveRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    const el = waveRef.current
+    if (!el) return
+    return attachWaveRipple(el)
+  }, [])
 
   const limited = !!limitSec && limitSec > 0
   const effectiveDuration = limited ? Math.min(limitSec as number, duration || (limitSec as number)) : duration
@@ -255,6 +323,7 @@ export function AudioPlayerBar({ url, onDuration, limitSec }: AudioPlayerBarProp
 
       {/* Waveform — кликабельная дорожка для перемотки */}
       <button
+        ref={waveRef}
         type="button"
         onPointerDown={seek}
         onPointerMove={(event) => {
@@ -294,7 +363,7 @@ export function AudioPlayerBar({ url, onDuration, limitSec }: AudioPlayerBarProp
       </button>
 
       {/* Тайминг: прошло / всего */}
-      <span className="flex-shrink-0 whitespace-nowrap text-[10px] tabular-nums text-txt-muted">
+      <span className="flex-shrink-0 whitespace-nowrap text-2xs tabular-nums text-txt-muted">
         <span className="text-txt-secondary">{fmtTime(currentTime)}</span>
         <span className="opacity-50"> / {fmtTime(effectiveDuration)}</span>
       </span>
@@ -304,7 +373,7 @@ export function AudioPlayerBar({ url, onDuration, limitSec }: AudioPlayerBarProp
 
       {limited && (
         <span
-          className="flex-shrink-0 rounded bg-accent/12 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-accent"
+          className="flex-shrink-0 rounded bg-accent/12 px-1 py-0.5 text-2xs font-semibold uppercase tracking-wide text-accent"
           title={t('plugin.previewOnly')}
         >
           {t('plugin.previewShort', { seconds: limitSec as number })}
@@ -340,6 +409,13 @@ export function PresetComparePlayer({ wetUrl, dryUrl, onDuration, stickers }: Pr
   const [muted, setMuted] = useState(false)
   const [mode, setMode] = useState<'wet' | 'dry'>('wet')
   const waveform = useRef(makeWaveform(wetUrl))
+  const waveRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    const el = waveRef.current
+    if (!el) return
+    return attachWaveRipple(el)
+  }, [])
 
   const effectiveVolume = muted ? 0 : volume
   const timelinePct = duration ? (currentTime / duration) * 100 : 0
@@ -509,6 +585,7 @@ export function PresetComparePlayer({ wetUrl, dryUrl, onDuration, stickers }: Pr
 
       {/* Waveform — кликабельная дорожка для перемотки */}
       <button
+        ref={waveRef}
         type="button"
         onPointerDown={seek}
         onPointerMove={(event) => {
@@ -548,7 +625,7 @@ export function PresetComparePlayer({ wetUrl, dryUrl, onDuration, stickers }: Pr
       </button>
 
       {/* Тайминг: прошло / всего */}
-      <span className="flex-shrink-0 whitespace-nowrap text-[10px] tabular-nums text-txt-muted">
+      <span className="flex-shrink-0 whitespace-nowrap text-2xs tabular-nums text-txt-muted">
         <span className="text-txt-secondary">{fmtTime(currentTime)}</span>
         <span className="opacity-50"> / {fmtTime(duration)}</span>
       </span>
@@ -558,7 +635,7 @@ export function PresetComparePlayer({ wetUrl, dryUrl, onDuration, stickers }: Pr
         className="flex flex-shrink-0 items-center gap-1.5"
         title={mode === 'wet' ? t('preset.wet') : t('preset.dry')}
       >
-        <span className="text-[10px] font-medium text-txt-muted">{t('preset.effects')}</span>
+        <span className="text-2xs font-medium text-txt-muted">{t('preset.effects')}</span>
         <Toggle
           size="sm"
           value={mode === 'wet'}
@@ -577,7 +654,7 @@ export function PresetComparePlayer({ wetUrl, dryUrl, onDuration, stickers }: Pr
         {stickers.slice(0, 2).map((label) => (
           <span
             key={label}
-            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium select-none"
+            className="inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium select-none"
             style={{
               color: 'rgb(var(--ac))',
               background: 'rgb(var(--ac) / 0.12)',

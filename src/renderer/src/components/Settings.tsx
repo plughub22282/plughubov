@@ -128,7 +128,7 @@ function Section({ icon, title, children }: {
             {icon}
           </span>
         )}
-        <span className="text-[13px] font-semibold text-txt-primary tracking-wide">{title}</span>
+        <span className="text-sm font-semibold text-txt-primary tracking-wide">{title}</span>
       </div>
       <div className="divide-y divide-app-border/40">
         {children}

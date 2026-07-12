@@ -14,9 +14,7 @@ module.exports = {
         accent: {
           DEFAULT: 'rgb(var(--ac)   / <alpha-value>)',
           hover:   'rgb(var(--ac-h) / <alpha-value>)',
-          muted:   'rgb(var(--ac-m) / <alpha-value>)',
-          cyan:    'rgb(var(--ac2)  / <alpha-value>)',
-          hot:     'rgb(var(--ac3)  / <alpha-value>)'
+          muted:   'rgb(var(--ac-m) / <alpha-value>)'
         },
         txt: {
           primary:   'rgb(var(--tx1) / <alpha-value>)',
@@ -33,6 +31,10 @@ module.exports = {
       fontFamily: {
         sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'Segoe UI', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace']
+      },
+      fontSize: {
+        /* Один канонический шаг ниже xs — заменяет разнобой 9/10/11px в бейджах и метаданных */
+        '2xs': ['0.6875rem', { lineHeight: '1rem' }]
       },
       boxShadow: {
         card:         'var(--shadow-card)',

@@ -335,7 +335,7 @@ export default function Marketplace() {
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold text-txt-primary flex-shrink-0">{t('nav.marketplace')}</h1>
 
-          <div className={`flex items-center gap-1.5 text-[11px] ${
+          <div className={`flex items-center gap-1.5 text-2xs ${
             loadState === 'loading' ? 'text-txt-muted' : loadState === 'ok' ? 'text-status-success' : 'text-status-error'
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${
@@ -374,7 +374,7 @@ export default function Marketplace() {
               <button
                 key={cat}
                 onClick={() => setCategory(cat)}
-                className={`text-[11px] px-2.5 py-1 rounded-lg font-medium no-drag ${
+                className={`text-2xs px-2.5 py-1 rounded-lg font-medium no-drag ${
                   category === cat ? 'text-white' : 'text-txt-muted border border-app-border/60'
                 }`}
                 style={

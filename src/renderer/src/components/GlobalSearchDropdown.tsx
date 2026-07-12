@@ -71,7 +71,7 @@ export default function GlobalSearchDropdown({ query, onNavigate, onSelect }: Gl
               <img src={item.iconUrl} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
             ) : (
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[11px] font-semibold"
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-2xs font-semibold"
                 style={{ background: 'rgb(var(--ac) / 0.15)', color: 'rgb(var(--ac))' }}
               >
                 {initialsOf(item.name)}
@@ -79,7 +79,7 @@ export default function GlobalSearchDropdown({ query, onNavigate, onSelect }: Gl
             )}
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-txt-primary truncate">{item.name}</p>
-              <span className="text-[10px] text-txt-muted">{t(`nav.${item.tab}`)}</span>
+              <span className="text-2xs text-txt-muted">{t(`nav.${item.tab}`)}</span>
             </div>
           </button>
         ))

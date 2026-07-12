@@ -339,7 +339,7 @@ export default function VladonChat({
           <button
             type="button"
             onClick={resetChat}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-txt-muted hover:bg-white/10 hover:text-txt-primary no-drag"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-2xs text-txt-muted hover:bg-white/10 hover:text-txt-primary no-drag"
           >
             <IconRefresh />
             {t('ai.newChat')}
@@ -367,7 +367,7 @@ export default function VladonChat({
                     key={key}
                     type="button"
                     onClick={() => submit(t(`ai.suggestion.${key}`))}
-                    className="rounded-full border border-accent/20 bg-accent/8 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/14 no-drag"
+                    className="rounded-full border border-accent/20 bg-accent/8 px-2.5 py-1 text-2xs font-medium text-accent hover:bg-accent/14 no-drag"
                   >
                     {t(`ai.suggestion.${key}`)}
                   </button>
@@ -396,7 +396,7 @@ export default function VladonChat({
       </div>
 
       {error && (
-        <div className="mx-auto mb-2 w-full max-w-3xl flex-shrink-0 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2 text-[11px] text-rose-300">
+        <div className="mx-auto mb-2 w-full max-w-3xl flex-shrink-0 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2 text-2xs text-rose-300">
           {error}
         </div>
       )}
@@ -533,7 +533,7 @@ function RecoBlock({
 
   if (message.error) {
     return (
-      <div className="animate-fade-in-up rounded-xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2 text-[11px] text-rose-300">
+      <div className="animate-fade-in-up rounded-xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2 text-2xs text-rose-300">
         {message.error}
       </div>
     )
@@ -545,7 +545,7 @@ function RecoBlock({
 
   if (resolved.length === 0) {
     return (
-      <div className="animate-fade-in-up rounded-xl border border-app-border/60 bg-app-panel/60 px-3.5 py-3 text-center text-[11px] text-txt-muted">
+      <div className="animate-fade-in-up rounded-xl border border-app-border/60 bg-app-panel/60 px-3.5 py-3 text-center text-2xs text-txt-muted">
         {t('recommend.empty')}
       </div>
     )
@@ -560,7 +560,7 @@ function RecoBlock({
           style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
         >
           <div
-            className="flex items-start gap-1.5 rounded-xl border border-accent/20 px-3 py-2 text-[11px] leading-relaxed text-txt-secondary"
+            className="flex items-start gap-1.5 rounded-xl border border-accent/20 px-3 py-2 text-2xs leading-relaxed text-txt-secondary"
             style={{ background: 'linear-gradient(135deg, rgb(var(--ac) / 0.1), rgb(var(--ac) / 0.03))' }}
           >
             <span className="mt-0.5 flex-shrink-0 text-accent">

@@ -6,30 +6,30 @@
    ТЕМЫ
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Тёмная (default) — плоская zinc-палитра, коммерческий минимализм ────── */
+/* ── Тёмная (default) — графитовый монохром, холодный синий акцент ───────── */
 :root {
-  --bg:    9   9  11;   /* zinc-950 */
-  --panel: 24  24  27;  /* zinc-900 */
-  --card:  24  24  27;  /* zinc-900 */
-  --card-alpha: 0.5;    /* карточка — zinc-900/50, плоско поверх zinc-950 */
-  --bdr:   39  39  42;  /* zinc-800 */
-  --bdr-a: 63  63  70;  /* zinc-700 */
+  --bg:      7  10  12;
+  --panel:  21  25  28;
+  --card:   21  25  28;
+  --card-alpha: 0.5;    /* карточка — panel/50, плоско поверх bg */
+  --bdr:    35  40  44;
+  --bdr-a:  58  65  70;
 
-  --tx1: 249 250 252;
-  --tx2: 176 181 191;
-  --tx3: 113 113 122;   /* ближе к zinc-500 — читаемее для мелких иконок/подписей */
+  --tx1: 247 250 253;
+  --tx2: 176 182 186;
+  --tx3: 143 149 155;   /* поднято с исходного затемнённого — исходное давало ~3.7:1 к карточке, ниже WCAG AA */
 
-  /* Акцент — насыщенный фиолетовый (было платиновое "серое" ощущение) */
-  --ac:   139  92 246;  /* #8B5CF6 */
-  --ac-h: 167 139 250;  /* #A78BFA */
-  --ac-m:  46  26  84;  /* #2E1A54 */
+  /* Акцент — холодный графитовый синий, единственный сигнал в интерфейсе */
+  --ac:   102 134 161;  /* #6686A1 */
+  --ac-h: 137 165 190;  /* #89A5BE */
+  --ac-m:  27  43  56;  /* #1B2B38 */
 
-  /* Доп. акценты для категорий/трендов — не заменяют --ac, используются точечно */
-  --ac2: 34 211 238;  /* #22D3EE cyan */
-  --ac3: 244 63 94;   /* #F43F5E hot pink/rose */
+  /* Затемнённая пара только для фона .btn-primary: белый текст на --ac/--ac-h давал 3.83:1 / 2.56:1 в углу градиента — ниже WCAG AA (4.5:1) */
+  --btn-ac:   71  94 113;
+  --btn-ac-h: 96 116 133;
 
-  --glow:    0 0 20px rgba(139,92,246,0.25);
-  --glow-sm: 0 0 10px rgba(139,92,246,0.18);
+  --glow:    0 0 20px rgba(102,134,161,0.25);
+  --glow-sm: 0 0 10px rgba(102,134,161,0.18);
 
   --ui-hover:  rgb(255 255 255 / 0.06);
   --ui-subtle: rgb(255 255 255 / 0.03);
@@ -38,10 +38,10 @@
   --shadow-card:       0 1px 3px rgba(0,0,0,0.3);
   --shadow-card-hover: 0 2px 6px rgba(0,0,0,0.35);
 
-  /* Главный фон приложения: плоский zinc-950, без открыточной многослойности */
+  /* Главный фон приложения: плоский графитовый, без открыточной многослойности */
   --app-gradient:
-    radial-gradient(ellipse 900px 520px at 20% -10%, rgb(63 63 70 / 0.10) 0%, transparent 60%),
-    rgb(9 9 11);
+    radial-gradient(ellipse 900px 520px at 20% -10%, rgb(58 65 70 / 0.10) 0%, transparent 60%),
+    rgb(7 10 12);
 
   --sidebar-glow:  none;
   --content-glow:  none;
@@ -51,25 +51,27 @@
 
 /* ── Светлая ─────────────────────────────────────────────────────────────── */
 [data-theme="pearl"] {
-  --bg:    246 247 249;
-  --panel: 238 240 244;
+  --bg:    245 247 250;
+  --panel: 237 241 244;
   --card:  255 255 255;
   --card-alpha: 0.78;
-  --bdr:   218 222 230;
-  --bdr-a: 185 195 210;
+  --bdr:   217 223 228;
+  --bdr-a: 188 195 202;
 
-  --tx1:  14  18  26;
-  --tx2:  78  90 112;
-  --tx3: 145 158 175;
+  --tx1:  14  19  22;
+  --tx2:  83  91  98;
+  --tx3: 102 111 120;   /* исходное давало ~2.7:1 к белой карточке, ниже WCAG AA */
 
-  --ac:    59 130 246;
-  --ac-h:  37  99 235;
-  --ac-m: 215 230 254;
-  --ac2:   14 165 233;  /* #0EA5E9 */
-  --ac3:  225  29  72;  /* #E11D48 */
+  --ac:    76 110 138;
+  --ac-h:  53  88 116;
+  --ac-m: 216 231 244;
 
-  --glow:    0 0 20px rgba(59,130,246,0.18);
-  --glow-sm: 0 0 10px rgba(59,130,246,0.12);
+  /* В pearl-теме --ac/--ac-h уже проходят AA (5.38–7.50:1) под белым текстом кнопки — затемнять не нужно */
+  --btn-ac:    76 110 138;
+  --btn-ac-h:  53  88 116;
+
+  --glow:    0 0 20px rgba(76,110,138,0.18);
+  --glow-sm: 0 0 10px rgba(76,110,138,0.12);
 
   --ui-hover:  rgb(0 0 0 / 0.045);
   --ui-subtle: rgb(0 0 0 / 0.025);
@@ -79,13 +81,13 @@
   --shadow-card-hover: 0 4px 16px rgba(0,0,0,0.09), 0 0 0 1px rgb(var(--ac) / 0.14);
 
   --app-gradient:
-    radial-gradient(ellipse 1000px 680px at 12% -8%, rgb(59 130 246 / 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 1000px 680px at 12% -8%, rgb(76 110 138 / 0.08) 0%, transparent 60%),
     linear-gradient(145deg, #fbfcfe 0%, #eef2f8 55%, #e3e9f3 100%);
 
-  --sidebar-glow: linear-gradient(180deg, rgb(59 130 246 / 0.06) 0%, transparent 60%);
+  --sidebar-glow: linear-gradient(180deg, rgb(76 110 138 / 0.06) 0%, transparent 60%);
   --content-glow: none;
   --auth-glow: radial-gradient(ellipse 700px 500px at 50% -80px,
-    rgb(59 130 246 / 0.10) 0%, transparent 65%);
+    rgb(76 110 138 / 0.10) 0%, transparent 65%);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════ */
@@ -162,11 +164,11 @@ body::after {
 
 /* В светлой теме виньетка почти незаметна */
 [data-theme="pearl"] body::before {
-  background: radial-gradient(closest-side, rgb(59 130 246 / 0.06), transparent 70%);
+  background: radial-gradient(closest-side, rgb(76 110 138 / 0.06), transparent 70%);
 }
 [data-theme="pearl"] body::after {
   background: radial-gradient(ellipse 120% 120% at 50% 50%,
-              transparent 70%, rgb(40 50 70 / 0.06) 100%);
+              transparent 70%, rgb(37 52 65 / 0.06) 100%);
 }
 
 #root {
@@ -266,6 +268,26 @@ input, textarea, select {
   cursor: default;
   opacity: 0.5;
 }
+.audio-player {
+  transition: border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    backdrop-filter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.audio-player:hover {
+  border-color: rgb(var(--bdr-a) / 0.9);
+  box-shadow: 0 14px 36px rgb(0 0 0 / 0.35);
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .audio-player:hover {
+    backdrop-filter: blur(14px) saturate(1.15);
+    -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .audio-player {
+    transition: none;
+  }
+}
 .soundcloud-wave {
   cursor: pointer;
   background:
@@ -293,6 +315,12 @@ input, textarea, select {
   border-radius: 999px;
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.025) inset;
   transition: background 120ms ease, opacity 120ms ease;
+  transform: scaleY(calc(1 + var(--ripple, 0)));
+  transform-origin: 50% 100%;
+}
+/* Затухающая рябь (см. attachWaveRipple в AudioPlayer.tsx) — компоузится только пока активна */
+.soundcloud-wave.wave-rippling .wave-bar {
+  will-change: transform;
 }
 .soundcloud-wave .wave-layer-muted .wave-bar {
   background: rgb(var(--bdr-a) / 0.42);
@@ -429,7 +457,7 @@ input, textarea, select {
            no-drag active:scale-[0.97] cursor-pointer;
     background:
       linear-gradient(180deg, rgb(255 255 255 / 0.34), transparent 42%),
-      linear-gradient(135deg, rgb(var(--ac) / 0.94), rgb(var(--ac-h)));
+      linear-gradient(135deg, rgb(var(--btn-ac) / 0.94), rgb(var(--btn-ac-h)));
     color: rgb(var(--btn-primary-text));
     border: 1px solid rgb(255 255 255 / 0.28);
     box-shadow:
@@ -502,6 +530,9 @@ input, textarea, select {
     border-color: rgb(var(--ac) / 0.45);
     transform: translateY(-3px);
     box-shadow: var(--shadow-card-hover), var(--glow-sm);
+  }
+  .card-interactive-no-lift:hover {
+    transform: none;
   }
 
   /* Лейбл поля формы — единый стиль вместо eyebrow-тропа (uppercase+tracking) в каждой форме */
@@ -580,7 +611,7 @@ input, textarea, select {
     transform: scale(0.99);
   }
   .nav-section-label {
-    @apply text-[10px] font-semibold uppercase;
+    @apply text-2xs font-semibold uppercase;
     color: rgb(var(--tx3));
     letter-spacing: 0.14em;
     transition: color 130ms ease;
@@ -621,7 +652,7 @@ input, textarea, select {
 
   /* Навигационные кнопки сайдбара */
   .tab-btn {
-    @apply relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-[10px] text-[13px] font-medium
+    @apply relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-[10px] text-sm font-medium
            no-drag cursor-pointer w-full select-none;
     transition: background 150ms ease, color 120ms ease, transform 80ms ease;
   }
@@ -658,7 +689,7 @@ input, textarea, select {
 
   /* Бейдж */
   .badge {
-    @apply text-[11px] px-2 py-0.5 rounded-lg font-medium;
+    @apply text-2xs px-2 py-0.5 rounded-lg font-medium;
   }
 
   /* Поле поиска — пилюля с подсветкой при фокусе */

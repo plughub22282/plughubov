@@ -117,7 +117,7 @@ export default function Catalog() {
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold text-txt-primary flex-shrink-0">{t('catalog.title')}</h1>
 
-          <div className={`flex items-center gap-1.5 text-[11px] ${
+          <div className={`flex items-center gap-1.5 text-2xs ${
             loadState === 'loading' ? 'text-txt-muted' : isOnline ? 'text-status-success' : 'text-status-error'
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${
@@ -133,7 +133,7 @@ export default function Catalog() {
             {/* Остаток суточных автоустановок (только для free). */}
             {quota && quota.ok && quota.premium === false && !quota.unlimited && (
               <span
-                className="text-[11px] px-2 py-0.5 rounded-lg font-medium"
+                className="text-2xs px-2 py-0.5 rounded-lg font-medium"
                 style={{
                   color: 'rgb(var(--ac))',
                   background: 'rgb(var(--ac) / 0.1)',
@@ -148,7 +148,7 @@ export default function Catalog() {
               </span>
             )}
             {isOnline && (
-              <span className="text-[11px] text-txt-muted">{t('common.pluginsCount', { count: filtered.length })}</span>
+              <span className="text-2xs text-txt-muted">{t('common.pluginsCount', { count: filtered.length })}</span>
             )}
             <button
               onClick={fetchPlugins}
@@ -170,7 +170,7 @@ export default function Catalog() {
               <button
                 key={cat}
                 onClick={() => setCategory(cat)}
-                className={`text-[11px] px-2.5 py-1 rounded-lg font-medium no-drag ${
+                className={`text-2xs px-2.5 py-1 rounded-lg font-medium no-drag ${
                   category === cat ? 'text-white' : 'text-txt-muted border border-app-border/60'
                 }`}
                 style={
