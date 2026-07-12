@@ -1450,6 +1450,7 @@ begin
   if v_last is null then
     v_count := 1;
     v_stage := 0;
+    v_pending := false;
   else
     v_diff := v_today - v_last;
     if v_diff = 0 then
@@ -1465,6 +1466,7 @@ begin
       -- Пропуск дня — безусловный сброс.
       v_count := 1;
       v_stage := 0;
+      v_pending := false;
     end if;
   end if;
 
@@ -1510,7 +1512,7 @@ begin
   if v_uid is null then
     raise exception 'unauthorized';
   end if;
-  if p_choice not in ('beat', 'download') then
+  if p_choice is null or p_choice not in ('beat', 'download') then
     raise exception 'bad_choice';
   end if;
 
