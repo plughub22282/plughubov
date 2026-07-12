@@ -1415,3 +1415,143 @@ alter table public.profiles
   add column if not exists bonus_download_slots    int  not null default 0;
 alter table public.profiles
   add column if not exists bonus_download_slots_month date;
+
+-- ─── touch_streak() ─────────────────────────────────────────────────────────
+-- Раз за сессию отмечает заход. Идемпотентно в рамках дня (diff=0 → no-op).
+-- Не выдаёт награду сама — только взводит reward_pending на порогах 3/7/28.
+create or replace function public.touch_streak()
+  returns table (streak_count int, reward_pending boolean, reward_stage int)
+  language plpgsql
+  security definer
+  set search_path = public
+as $$
+declare
+  v_uid     uuid    := auth.uid();
+  v_today   date    := (now() at time zone 'utc')::date;
+  v_last    date;
+  v_count   int;
+  v_stage   int;
+  v_pending boolean;
+  v_diff    int;
+begin
+  if v_uid is null then
+    return;
+  end if;
+
+  select p.streak_last_date,
+         coalesce(p.streak_count, 0),
+         coalesce(p.streak_reward_stage, 0),
+         coalesce(p.streak_reward_pending, false)
+    into v_last, v_count, v_stage, v_pending
+    from public.profiles p
+    where p.id = v_uid
+    for update;
+
+  if v_last is null then
+    v_count := 1;
+    v_stage := 0;
+  else
+    v_diff := v_today - v_last;
+    if v_diff = 0 then
+      -- Тот же день: ничего не меняем, отдаём текущее состояние.
+      streak_count  := v_count;
+      reward_pending := v_pending;
+      reward_stage  := v_stage;
+      return next;
+      return;
+    elsif v_diff = 1 then
+      v_count := v_count + 1;
+    else
+      -- Пропуск дня — безусловный сброс.
+      v_count := 1;
+      v_stage := 0;
+    end if;
+  end if;
+
+  -- Порог достигнут впервые в этом цикле → взводим pending.
+  if v_count in (3, 7, 28) and v_stage < v_count then
+    v_stage   := v_count;
+    v_pending := true;
+  end if;
+
+  perform set_config('app.allow_priv_change', 'on', true);
+  update public.profiles
+    set streak_count          = v_count,
+        streak_last_date      = v_today,
+        streak_reward_stage   = v_stage,
+        streak_reward_pending = v_pending
+    where id = v_uid;
+
+  streak_count  := v_count;
+  reward_pending := v_pending;
+  reward_stage  := v_stage;
+  return next;
+end;
+$$;
+
+revoke execute on function public.touch_streak() from public;
+grant  execute on function public.touch_streak() to authenticated;
+
+-- ─── claim_streak_reward(p_choice text) ─────────────────────────────────────
+-- Выбор награды. Начисляет бонус текущего месяца, гасит pending.
+-- На пороге 28 после выбора — стартует новый цикл (streak_count = 1).
+create or replace function public.claim_streak_reward(p_choice text)
+  returns table (streak_count int)
+  language plpgsql
+  security definer
+  set search_path = public
+as $$
+declare
+  v_uid     uuid := auth.uid();
+  v_pending boolean;
+  v_stage   int;
+  v_count   int;
+begin
+  if v_uid is null then
+    raise exception 'unauthorized';
+  end if;
+  if p_choice not in ('beat', 'download') then
+    raise exception 'bad_choice';
+  end if;
+
+  select coalesce(p.streak_reward_pending, false),
+         coalesce(p.streak_reward_stage, 0),
+         coalesce(p.streak_count, 0)
+    into v_pending, v_stage, v_count
+    from public.profiles p
+    where p.id = v_uid
+    for update;
+
+  if not v_pending then
+    raise exception 'no_reward';
+  end if;
+
+  perform set_config('app.allow_priv_change', 'on', true);
+  if p_choice = 'beat' then
+    update public.profiles
+      set bonus_beat_slots       = coalesce(bonus_beat_slots, 0) + 1,
+          bonus_beat_slots_month = date_trunc('month', now())::date,
+          streak_reward_pending  = false
+      where id = v_uid;
+  else
+    update public.profiles
+      set bonus_download_slots       = coalesce(bonus_download_slots, 0) + 1,
+          bonus_download_slots_month = date_trunc('month', now())::date,
+          streak_reward_pending      = false
+      where id = v_uid;
+  end if;
+
+  if v_stage = 28 then
+    update public.profiles
+      set streak_count = 1, streak_reward_stage = 0
+      where id = v_uid;
+    v_count := 1;
+  end if;
+
+  streak_count := v_count;
+  return next;
+end;
+$$;
+
+revoke execute on function public.claim_streak_reward(text) from public;
+grant  execute on function public.claim_streak_reward(text) to authenticated;
