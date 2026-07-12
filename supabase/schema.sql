@@ -136,11 +136,18 @@ begin
   if (new.role is distinct from old.role
       or new.premium is distinct from old.premium
       or new.premium_until is distinct from old.premium_until
-      -- Реферальные поля тоже защищаем: иначе юзер сам обнулит счётчик наград
-      -- и получит премиум повторно, либо подменит реферера/код.
       or new.referred_by is distinct from old.referred_by
       or new.referral_rewards_granted is distinct from old.referral_rewards_granted
-      or new.referral_code is distinct from old.referral_code)
+      or new.referral_code is distinct from old.referral_code
+      -- Streak-поля: иначе юзер сам взведёт reward_pending / накрутит бонусы.
+      or new.streak_count is distinct from old.streak_count
+      or new.streak_last_date is distinct from old.streak_last_date
+      or new.streak_reward_stage is distinct from old.streak_reward_stage
+      or new.streak_reward_pending is distinct from old.streak_reward_pending
+      or new.bonus_beat_slots is distinct from old.bonus_beat_slots
+      or new.bonus_beat_slots_month is distinct from old.bonus_beat_slots_month
+      or new.bonus_download_slots is distinct from old.bonus_download_slots
+      or new.bonus_download_slots_month is distinct from old.bonus_download_slots_month)
      and coalesce(current_setting('app.allow_priv_change', true), '') <> 'on' then
     raise exception 'Изменение роли, премиума или реферальных полей запрещено';
   end if;
@@ -1388,3 +1395,23 @@ $$;
 
 revoke execute on function public.peek_named_quota(text, int, interval) from public;
 grant  execute on function public.peek_named_quota(text, int, interval) to authenticated;
+
+-- ─── Streak-система (подпроект 2 Блока 1) ───────────────────────────────────
+-- Считаем подряд идущие календарные дни (UTC) захода. Пороги 3/7/28 → выбор
+-- одной из двух наград. Все 8 колонок под защитой prevent_role_change (ниже).
+alter table public.profiles
+  add column if not exists streak_count           int  not null default 0;
+alter table public.profiles
+  add column if not exists streak_last_date       date;
+alter table public.profiles
+  add column if not exists streak_reward_stage     int  not null default 0;
+alter table public.profiles
+  add column if not exists streak_reward_pending   boolean not null default false;
+alter table public.profiles
+  add column if not exists bonus_beat_slots        int  not null default 0;
+alter table public.profiles
+  add column if not exists bonus_beat_slots_month  date;
+alter table public.profiles
+  add column if not exists bonus_download_slots    int  not null default 0;
+alter table public.profiles
+  add column if not exists bonus_download_slots_month date;
