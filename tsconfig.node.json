@@ -1,5 +1,6 @@
 {
   "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"],
+  "exclude": ["src/main/**/*.selfcheck.ts"],
   "compilerOptions": {
     "composite": true,
     "types": ["electron-vite/node"],

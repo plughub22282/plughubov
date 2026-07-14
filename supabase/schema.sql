@@ -930,6 +930,7 @@ as $$
 declare
   v_prem  boolean;
   v_count int;
+  v_bonus int;
 begin
   -- Снимок статуса автора на момент публикации — для галочки (п.6) и bump (п.5).
   v_prem := public.has_premium();
@@ -944,13 +945,18 @@ begin
     return new;
   end if;
 
-  -- Free-автор: не более 3 битов за календарный месяц (сброс 1-го числа).
+  -- Free-автор: не более 3 битов за календарный месяц + бонусы стрика текущего месяца.
   select count(*) into v_count
     from public.community_plugins
     where uploader_id = auth.uid()
       and kind = 'beat'
       and created_at >= date_trunc('month', now());
-  if v_count >= 3 then
+  select case when p.bonus_beat_slots_month = date_trunc('month', now())::date
+              then coalesce(p.bonus_beat_slots, 0) else 0 end
+    into v_bonus
+    from public.profiles p
+    where p.id = auth.uid();
+  if v_count >= 3 + coalesce(v_bonus, 0) then
     raise exception 'BEAT_MONTHLY_LIMIT' using errcode = 'check_violation';
   end if;
 
@@ -1118,7 +1124,8 @@ as $$
       p.id,
       p.created_at,
       public.primary_device(p.id) as dev,
-      public.discord_created_at(p.id) as born
+      public.discord_created_at(p.id) as born,
+      coalesce(p.streak_count, 0) as streak
     from public.profiles p
     where p.referred_by = p_referrer
   ),
@@ -1132,6 +1139,7 @@ as $$
       and r.dev <> rd.dev
       and r.born is not null
       and r.born <= now() - interval '30 days'
+      and r.streak >= 3
   )
   select coalesce(count(*), 0)::int from eligible where rn = 1;
 $$;
@@ -1557,3 +1565,42 @@ $$;
 
 revoke execute on function public.claim_streak_reward(text) from public;
 grant  execute on function public.claim_streak_reward(text) to authenticated;
+
+-- ─── consume_asset_download_quota() ─────────────────────────────────────────
+-- Месячный лимит скачивания ассетов (preset/loop/drumkit). Premium — без лимита;
+-- free = 50 + бонусные слоты стрика текущего месяца. Лимит считается на сервере.
+create or replace function public.consume_asset_download_quota()
+  returns table (allowed boolean, used_after int, resets_at timestamptz)
+  language plpgsql
+  security definer
+  set search_path = public
+as $$
+declare
+  v_uid   uuid := auth.uid();
+  v_bonus int  := 0;
+  v_limit int;
+begin
+  if v_uid is null then
+    return query select false, 0, now();
+    return;
+  end if;
+
+  if public.has_premium() then
+    return query select true, 0, now();
+    return;
+  end if;
+
+  select case when p.bonus_download_slots_month = date_trunc('month', now())::date
+              then coalesce(p.bonus_download_slots, 0) else 0 end
+    into v_bonus
+    from public.profiles p
+    where p.id = v_uid;
+
+  v_limit := 50 + coalesce(v_bonus, 0);
+  return query
+    select * from public.consume_named_quota('asset_download_monthly', v_limit, interval '30 days');
+end;
+$$;
+
+revoke execute on function public.consume_asset_download_quota() from public;
+grant  execute on function public.consume_asset_download_quota() to authenticated;

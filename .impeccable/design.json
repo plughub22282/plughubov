@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 2,
+  "register": "brand",
+  "platform": "web",
+  "northStar": {
+    "metaphor": "Тихая студия ночью",
+    "description": "Тёмная комната с одним осмысленным источником света — Graphite Blue — и всем остальным, что намеренно отступает в тень, чтобы акцент и то, на что он указывает, несли всё внимание."
+  },
+  "colors": {
+    "primary": {
+      "name": "Graphite Blue",
+      "base": "#6686A1",
+      "hover": "#89A5BE",
+      "muted": "#1B2B38",
+      "usage": "Единственный акцент экрана: primary CTA, активная вкладка, фокус, статус «проверено», активная волна плеера. Точка, не заливка.",
+      "lightThemeOverride": { "base": "#4C6E8A", "hover": "#355874", "reason": "тот же hue (245°), но темнее/насыщеннее для контраста на светлом фоне — не отдельная палитра" }
+    },
+    "monochrome": "Полный монохром: единственный акцентный hue во всём приложении. Отдельных Secondary/Tertiary-акцентов нет — категории/тренды различаются текстом и иконками, не цветом.",
+    "neutralRamp": {
+      "bg": "#070A0C",
+      "panel": "#15191C",
+      "card": "#15191C",
+      "cardAlpha": 0.5,
+      "border": "#23282C",
+      "borderActive": "#3A4146"
+    },
+    "text": { "primary": "#F7FAFD", "secondary": "#B0B6BA", "muted": "#8F959B" },
+    "status": { "success": "#4ADE80", "error": "#F87171", "warning": "#FBBF24", "info": "#60A5FA" }
+  },
+  "typography": {
+    "sans": "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif",
+    "mono": "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+    "scale": {
+      "2xs": "0.6875rem",
+      "xs": "0.75rem",
+      "sm": "0.875rem",
+      "base": "1rem",
+      "lg": "1.125rem",
+      "xl": "1.25rem",
+      "2xl": "1.5rem"
+    },
+    "note": "Нет отдельной display-шкалы — иерархия строится весом и цветом текста, не ростом кегля."
+  },
+  "elevation": {
+    "philosophy": "Тихая глубина",
+    "description": "Почти плоско по умолчанию — одна мягкая тень на карточке. Физичность (подъём, усиленная тень, blur) появляется только на hover/focus, не как постоянное украшение.",
+    "shadows": {
+      "card": "0 1px 3px rgba(0,0,0,0.3)",
+      "cardHover": "0 2px 6px rgba(0,0,0,0.35)",
+      "glow": "0 0 20px rgba(102,134,161,0.25)",
+      "glowSm": "0 0 10px rgba(102,134,161,0.18)"
+    },
+    "blur": "backdrop-filter: blur(14-16px) saturate(1.15-1.16) — только на hover/интерактивных карточках, не постоянно",
+    "rule": "glow виден только у активного/сфокусированного элемента — если ничего не активно, поверхность плоская"
+  },
+  "motion": {
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "durations": { "micro": "80-150ms", "standard": "160-220ms", "entrance": "220-340ms" },
+    "reducedMotion": "глобально через @media (prefers-reduced-motion: reduce) на * — анимации/переходы схлопываются до 0.001ms"
+  },
+  "rounded": { "sm": "0.375rem", "md": "0.625rem", "xl": "0.75rem", "2xl": "1rem", "3xl": "1.25rem", "full": "999px" },
+  "components": {
+    "philosophy": "Сдержанная точность",
+    "description": "Минимум декора; акцент только там, где нужно направить внимание. Скругления чуть туже дефолтных Tailwind (3xl = 1.25rem, не 1.5rem) — форма собранная, не «мягкая игрушка».",
+    "inventory": [
+      { "name": "button-primary", "class": "btn-primary", "role": "единственная акцентная кнопка экрана" },
+      { "name": "button-ghost", "class": "btn-ghost", "role": "вторичные действия" },
+      { "name": "card", "class": "card", "role": "плоская база: граница + одна тень" },
+      { "name": "card-interactive", "class": "card-interactive", "role": "card + подъём/акцентная рамка/glow на hover" },
+      { "name": "input-field", "class": "input-field", "role": "базовое поле ввода с фокус-кольцом Graphite Blue" },
+      { "name": "select-field", "class": "select-field", "role": "input-field + своя стрелка" },
+      { "name": "search-field", "class": "search-field", "role": "поле поиска-пилюля" },
+      { "name": "badge", "class": "badge", "role": "компактный статус-маркер" },
+      { "name": "tab-button", "class": "tab-btn-active / tab-btn-inactive", "role": "навигация сайдбара" },
+      { "name": "nav-section-header", "class": "nav-section-header", "role": "аккордеон-заголовок секции навигации" },
+      { "name": "track-card", "class": "track-card", "role": "облегчённая карточка без backdrop-blur для плотных списков" },
+      { "name": "volume-control", "class": "volume-control", "role": "раскрывающийся слайдер громкости" },
+      { "name": "audio-player", "class": "audio-player", "role": "фирменный аудио-компонент, Graphite Blue — единственный активный цвет волны" }
+    ]
+  },
+  "doAndDont": {
+    "do": [
+      "Graphite Blue — единственный акцент экрана, точечно, не заливкой",
+      "Показывать безопасность визуально (статус сканирования, карантин), не только текстом",
+      "Держать поверхности плоскими по умолчанию; физичность — только на hover/focus",
+      "Уважать prefers-reduced-motion глобально",
+      "mono — только для технически точного контента (версии, хэши)"
+    ],
+    "dont": [
+      "Не превращать каталог в шаблонную сетку карточек SaaS-дашборда",
+      "Не имитировать пиратский сайт нулевых (баннеры, мигающие кнопки, визуальный шум)",
+      "Не использовать градиентный текст (background-clip: text + градиент)",
+      "Не заводить второй/третий акцентный hue для категорий — интерфейс монохромный, различие через текст/иконки",
+      "Не делать glow/тень постоянным украшением статичного элемента",
+      "Не растягивать 3xl-скругление обратно к дефолтным Tailwind 1.5rem"
+    ]
+  }
+}

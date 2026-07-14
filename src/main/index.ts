@@ -38,8 +38,10 @@ import { supabase } from './supabase'
 import type { DbPlugin, DbCommunityPlugin } from './supabase'
 import { registerAuthIpc, getState } from './auth'
 import { registerReferralIpc, handleReferralDeepLink, parseReferralDeepLink } from './referral'
+import { registerStreakIpc } from './streak'
 import { registerChatIpc } from './chat'
 import { registerAiIpc } from './ai'
+import { registerTasteIpc } from './taste'
 import {
   getQuarantineDir,
   runFileSecurityScan,
@@ -1699,11 +1701,17 @@ function createWindow(): void {
   // ─── IPC: реферальная программа ──────────────────────────────────────────
   registerReferralIpc()
 
+  // ─── IPC: streak-награды ─────────────────────────────────────────────────
+  registerStreakIpc()
+
   // ─── IPC: премиум-чат (общая комната) ────────────────────────────────────
   registerChatIpc()
 
   // ─── IPC: AI-ассистент (чат + подбор плагинов) ───────────────────────────
   registerAiIpc()
+
+  // ─── IPC: профиль вкусов для ленты «Для вас» (локальная история) ──────────
+  registerTasteIpc()
 
   // currentWin переустанавливается при КАЖДОМ вызове createWindow() (в т.ч. повторном,
   // после macOS-цикла закрыть окно → Dock → activate) — в отличие от параметра
@@ -2602,6 +2610,21 @@ function registerAppIpc(): void {
         }
         if ((asset.kind ?? '') === 'beat') {
           return { ok: false, error: 'Бит доступен только через ссылку оплаты автора.' }
+        }
+        // Месячный лимит скачиваний — только preset/loop/drumkit.
+        // Premium безлимитен; free = 50 + бонусные слоты стрика текущего месяца.
+        if (new Set(['preset', 'loop', 'drumkit']).has(asset.kind ?? '')) {
+          const { data: quota, error: quotaErr } = await supabase.rpc('consume_asset_download_quota')
+          const row = Array.isArray(quota) ? quota[0] : quota
+          if (quotaErr) {
+            return { ok: false, error: toSafeError(quotaErr, 'Не удалось проверить лимит скачиваний.', '[ipc] assets:download quota error') }
+          }
+          if (!row?.allowed) {
+            return {
+              ok: false,
+              error: 'Достигнут месячный лимит скачиваний для бесплатного аккаунта. Продлите премиум или заберите бонус за стрик.'
+            }
+          }
         }
         if (!isHttpUrl(asset.download_url)) {
           return { ok: false, error: 'У файла некорректная ссылка загрузки.' }

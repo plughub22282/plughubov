@@ -196,7 +196,10 @@ function buildBaseState(session: Session | null): AuthState {
     premium,
     // Allow-list премиум (автор/владелец) — бессрочный, срока нет.
     premiumUntil: null,
-    isOwner
+    isOwner,
+    onboardingCompleted: false,
+    onboardingDaw: null,
+    onboardingGenre: null
   }
 }
 

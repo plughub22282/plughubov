@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Pause, Play, Volume1, Volume2, VolumeX, X } from 'lucide-react'
 import { useI18n } from '../i18n'
-import { stopAnyPreview, registerActivePreview } from './AudioPlayer'
+import { useTaste } from '../hooks/useTaste'
+import { stopAnyPreview, registerActivePreview } from './previewPlayback'
 import { ImageWithFallback } from './ImageWithFallback'
 
 export interface PlayerTrack {
@@ -10,11 +11,17 @@ export interface PlayerTrack {
   author: string
   iconUrl?: string
   url: string
+  /** Категория контента — для персональной ленты «Для вас» (учёт прослушивания). */
+  category?: string
+  /** Вкладка-источник — для истории. */
+  tab?: string
+  limitSec?: number
 }
 
 interface PlayerCtx {
   current: PlayerTrack | null
   playing: boolean
+  loading: boolean
   currentTime: number
   duration: number
   volume: number
@@ -36,21 +43,38 @@ const Ctx = createContext<PlayerCtx | null>(null)
  */
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const { record } = useTaste()
   const [current, setCurrent] = useState<PlayerTrack | null>(null)
   const [playing, setPlaying] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [volume, setVolumeState] = useState(1)
+  const currentRef = useRef<PlayerTrack | null>(null)
 
   const ensureAudio = useCallback((): HTMLAudioElement => {
     if (audioRef.current) return audioRef.current
     const audio = new Audio()
+    audio.preload = 'auto'
     audio.volume = volume
     audio.addEventListener('loadedmetadata', () => setDuration(audio.duration || 0))
-    audio.addEventListener('timeupdate', () => setCurrentTime(audio.currentTime))
-    audio.addEventListener('ended', () => { setPlaying(false); setCurrentTime(0) })
-    audio.addEventListener('playing', () => setPlaying(true))
-    audio.addEventListener('pause', () => setPlaying(false))
+    audio.addEventListener('timeupdate', () => {
+      const limitSec = currentRef.current?.limitSec
+      if (limitSec && limitSec > 0 && audio.currentTime >= limitSec) {
+        audio.pause()
+        audio.currentTime = 0
+        setCurrentTime(0)
+        setPlaying(false)
+        setLoading(false)
+        return
+      }
+      setCurrentTime(audio.currentTime)
+    })
+    audio.addEventListener('ended', () => { setPlaying(false); setLoading(false); setCurrentTime(0) })
+    audio.addEventListener('playing', () => { setPlaying(true); setLoading(false) })
+    audio.addEventListener('waiting', () => setLoading(true))
+    audio.addEventListener('pause', () => { setPlaying(false); setLoading(false) })
+    audio.addEventListener('error', () => { setPlaying(false); setLoading(false) })
     audioRef.current = audio
     return audio
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,16 +84,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const audio = ensureAudio()
     stopAnyPreview()
     registerActivePreview(() => audio.pause())
+    if (track.category) {
+      record({ type: 'play', category: track.category, tab: track.tab, itemId: track.id, name: track.title })
+    }
+    currentRef.current = track
     setCurrent((prev) => {
-      if (prev?.id !== track.id) {
+      const sameTrack = prev?.id === track.id && prev.url === track.url
+      if (!sameTrack) {
         audio.src = track.url
         setCurrentTime(0)
         setDuration(0)
       }
       return track
     })
-    audio.play().catch(() => setPlaying(false))
-  }, [ensureAudio])
+    setLoading(true)
+    audio.play().catch(() => {
+      setPlaying(false)
+      setLoading(false)
+    })
+  }, [ensureAudio, record])
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current
@@ -79,15 +112,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     } else {
       stopAnyPreview()
       registerActivePreview(() => audio.pause())
-      audio.play().catch(() => {})
+      setLoading(true)
+      audio.play().catch(() => setLoading(false))
     }
   }, [playing, current])
 
   const seekTo = useCallback((sec: number) => {
     const audio = audioRef.current
     if (!audio) return
-    audio.currentTime = sec
-    setCurrentTime(sec)
+    const limitSec = currentRef.current?.limitSec
+    const max = limitSec && limitSec > 0 ? Math.min(limitSec, audio.duration || limitSec) : audio.duration
+    const next = Number.isFinite(max) && max > 0 ? Math.min(max, Math.max(0, sec)) : Math.max(0, sec)
+    audio.currentTime = next
+    setCurrentTime(next)
   }, [])
 
   const setVolume = useCallback((v: number) => {
@@ -97,8 +134,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const close = useCallback(() => {
     audioRef.current?.pause()
+    if (audioRef.current) audioRef.current.src = ''
+    currentRef.current = null
     setCurrent(null)
     setPlaying(false)
+    setLoading(false)
     setCurrentTime(0)
     setDuration(0)
   }, [])
@@ -108,7 +148,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <Ctx.Provider value={{ current, playing, currentTime, duration, volume, playTrack, togglePlay, seekTo, setVolume, close }}>
+    <Ctx.Provider value={{ current, playing, loading, currentTime, duration, volume, playTrack, togglePlay, seekTo, setVolume, close }}>
       {children}
     </Ctx.Provider>
   )
@@ -143,6 +183,9 @@ export function PlayerBar(): React.ReactElement | null {
   // Громкость на момент mute — чтобы клик по иконке восстанавливал прежний уровень, а не всегда 100%.
   const lastVolumeRef = useRef(volume || 1)
   if (volume > 0) lastVolumeRef.current = volume
+  const effectiveDuration = current?.limitSec && current.limitSec > 0
+    ? Math.min(current.limitSec, duration || current.limitSec)
+    : duration
 
   // Space = play/pause, ←/→ = перемотка на 5с. Игнорируем, пока фокус в поле ввода.
   useEffect(() => {
@@ -157,23 +200,23 @@ export function PlayerBar(): React.ReactElement | null {
       } else if (e.key === 'ArrowLeft') {
         seekTo(Math.max(0, currentTime - 5))
       } else if (e.key === 'ArrowRight') {
-        seekTo(Math.min(duration, currentTime + 5))
+        seekTo(Math.min(effectiveDuration, currentTime + 5))
       }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [current, togglePlay, seekTo, currentTime, duration])
+  }, [current, togglePlay, seekTo, currentTime, effectiveDuration])
 
   if (!current) return null
 
-  const pct = duration ? (currentTime / duration) * 100 : 0
+  const pct = effectiveDuration ? (currentTime / effectiveDuration) * 100 : 0
   const volumePct = Math.round(volume * 100)
 
   const seek = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!duration) return
+    if (!effectiveDuration) return
     const rect = event.currentTarget.getBoundingClientRect()
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
-    seekTo(ratio * duration)
+    seekTo(ratio * effectiveDuration)
   }
 
   const toggleMute = () => {
@@ -225,13 +268,13 @@ export function PlayerBar(): React.ReactElement | null {
             type="button"
             onPointerDown={seek}
             onPointerMove={(event) => { if (event.buttons === 1) seek(event) }}
-            disabled={!duration}
+            disabled={!effectiveDuration}
             aria-label={t('plugin.timeline')}
             className="group relative h-1.5 flex-1 overflow-hidden rounded-full bg-app-panel transition-all hover:h-2 disabled:opacity-50"
           >
             <span className="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width]" style={{ width: `${pct}%` }} />
           </button>
-          <span className="w-8 flex-shrink-0 text-2xs tabular-nums text-txt-muted">{fmt(duration)}</span>
+          <span className="w-8 flex-shrink-0 text-2xs tabular-nums text-txt-muted">{fmt(effectiveDuration)}</span>
         </div>
       </div>
 

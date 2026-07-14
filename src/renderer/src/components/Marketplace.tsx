@@ -2,11 +2,12 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import type { CommunityPlugin, InstallProgress, Plugin } from '../types'
 import { useI18n } from '../i18n'
 import { useSearch } from '../hooks/useSearch'
+import { useTaste } from '../hooks/useTaste'
 import { useUploadProgress } from '../hooks/useUploadProgress'
 import { useEscapeToClose } from '../hooks/useEscapeToClose'
 import {
   PluginCard, PluginDetailsModal, SkeletonCard, Empty, UploadSteps,
-  IconRefresh, IconX
+  IconRefresh, IconX, SearchField
 } from './pluginCommon'
 import { FileDropZone, Toast, type ToastType } from './FileDropZone'
 import { HashtagInput } from './HashtagInput'
@@ -236,6 +237,7 @@ export default function Marketplace() {
   const [showUpload, setShowUpload] = useState(false)
   const [toast, setToast]           = useState<{ message: string; type: ToastType } | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { record } = useTaste()
 
   const notify = useCallback((message: string, type: ToastType) => {
     setToast({ message, type })
@@ -245,6 +247,13 @@ export default function Marketplace() {
   }, [])
 
   const allCategories = [ALL_CATEGORY, ...Array.from(new Set(plugins.map((p) => p.category))).sort()]
+
+  const selectCategory = useCallback((cat: string) => {
+    setCategory(cat)
+    if (cat !== ALL_CATEGORY) {
+      record({ type: 'open', category: cat, tab: 'marketplace', itemId: cat, name: cat })
+    }
+  }, [record])
 
   const fetchPlugins = useCallback(async () => {
     setLoadState('loading')
@@ -292,8 +301,13 @@ export default function Marketplace() {
       next.delete(plugin.id)
       return next
     })
-    window.api.installPlugin(plugin.id, 'marketplace').then(clearPending, clearPending)
-  }, [])
+    window.api.installPlugin(plugin.id, 'marketplace').then((res) => {
+      if (res.ok) {
+        record({ type: 'download', category: plugin.category, tab: 'marketplace', itemId: plugin.id, name: plugin.name })
+      }
+      clearPending()
+    }, clearPending)
+  }, [record])
 
   const handleDelete = useCallback(async (plugin: Plugin) => {
     const res = await window.api.deleteCommunityPlugin(plugin.id)
@@ -347,6 +361,15 @@ export default function Marketplace() {
             </span>
           </div>
 
+          {plugins.length > 0 && (
+            <SearchField
+              value={search}
+              onChange={setSearch}
+              placeholder={t('common.search')}
+              className='flex-1 min-w-0 max-w-xs'
+            />
+          )}
+
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={fetchPlugins}
@@ -373,7 +396,7 @@ export default function Marketplace() {
             {allCategories.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setCategory(cat)}
+                onClick={() => selectCategory(cat)}
                 className={`text-2xs px-2.5 py-1 rounded-lg font-medium no-drag ${
                   category === cat ? 'text-white' : 'text-txt-muted border border-app-border/60'
                 }`}

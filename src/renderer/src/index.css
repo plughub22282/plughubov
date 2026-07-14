@@ -775,6 +775,14 @@ input, textarea, select {
   animation: premiumShine 1100ms ease-out both;
 }
 
+/* Медленное «дыхание» акцентного свечения на играющей кнопке трек-карточки —
+   один тихий источник света в тёмной комнате, а не мигающий индикатор. */
+@keyframes playGlow {
+  0%, 100% { box-shadow: 0 4px 12px rgb(0 0 0 / 0.4), 0 0 0 0 rgb(var(--ac) / 0); }
+  50%      { box-shadow: 0 4px 12px rgb(0 0 0 / 0.4), 0 0 15px 2px rgb(var(--ac) / 0.5); }
+}
+.cover-play-pulse { animation: playGlow 2.4s ease-in-out infinite; }
+
 /* Skeleton shimmer */
 .skeleton {
   background: linear-gradient(

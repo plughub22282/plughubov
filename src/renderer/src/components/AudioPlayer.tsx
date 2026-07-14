@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Toggle } from './Toggle'
+import { stopAnyPreview, registerActivePreview } from './previewPlayback'
+import { usePlayer, type PlayerTrack } from './PlayerBar'
 
 /** Треугольный плейхед над waveform — чисто визуальный маркер текущей позиции. */
 function PlayheadMarker({ pct }: { pct: number }): React.ReactElement {
@@ -13,20 +15,6 @@ function PlayheadMarker({ pct }: { pct: number }): React.ReactElement {
       <path d="M0 0 L8 0 L4 6 Z" fill="rgb(var(--ac))" />
     </svg>
   )
-}
-
-let stopActivePreview: (() => void) | null = null
-
-/** Останавливает превью, играющее прямо сейчас в любой карточке (или в глобальном
- * плеере, см. PlayerBar.tsx) — для соблюдения правила «звучит только один трек». */
-export function stopAnyPreview(): void {
-  stopActivePreview?.()
-}
-
-/** Регистрирует колбэк остановки как текущий активный — вызывается из PlayerBar.tsx,
- * чтобы запуск превью в карточке останавливал глобальный мини-плеер, и наоборот. */
-export function registerActivePreview(stop: () => void): void {
-  stopActivePreview = stop
 }
 
 function fmtTime(value: number): string {
@@ -152,19 +140,29 @@ function IconVolume({ level }: { level: number }): React.ReactElement {
 
 export interface AudioPlayerBarProps {
   url: string
+  track?: Omit<PlayerTrack, 'url'>
   onDuration?: (duration: number) => void
   limitSec?: number
+  /** Вызывается один раз при первом старте воспроизведения — учёт прослушивания для ленты. */
+  onPlay?: () => void
 }
 
-export function AudioPlayerBar({ url, onDuration, limitSec }: AudioPlayerBarProps): React.ReactElement {
+export function AudioPlayerBar({ url, track, onDuration, limitSec, onPlay }: AudioPlayerBarProps): React.ReactElement {
   const { t } = useI18n()
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [playing, setPlaying] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [volume, setVolume] = useState(1)
-  const [muted, setMuted] = useState(false)
+  const {
+    current,
+    playing: playerPlaying,
+    loading: playerLoading,
+    currentTime: playerCurrentTime,
+    duration: playerDuration,
+    volume,
+    playTrack,
+    togglePlay,
+    seekTo,
+    setVolume
+  } = usePlayer()
+  const reportedRef = useRef(false)
+  const lastVolumeRef = useRef(volume || 1)
   const waveform = useRef(makeWaveform(url))
   const waveRef = useRef<HTMLButtonElement | null>(null)
 
@@ -174,78 +172,57 @@ export function AudioPlayerBar({ url, onDuration, limitSec }: AudioPlayerBarProp
     return attachWaveRipple(el)
   }, [])
 
-  const limited = !!limitSec && limitSec > 0
-  const effectiveDuration = limited ? Math.min(limitSec as number, duration || (limitSec as number)) : duration
-  const effectiveVolume = muted ? 0 : volume
+  if (volume > 0) lastVolumeRef.current = volume
+  const trackLimitSec = limitSec ?? track?.limitSec
+  const playerTrack: PlayerTrack = {
+    id: track?.id ?? url,
+    title: track?.title ?? t('plugin.previewOnly'),
+    author: track?.author ?? '',
+    iconUrl: track?.iconUrl,
+    category: track?.category,
+    tab: track?.tab,
+    url,
+    limitSec: trackLimitSec
+  }
+  const isCurrent = current?.id === playerTrack.id && current.url === playerTrack.url
+  const playing = isCurrent && playerPlaying
+  const loading = isCurrent && playerLoading
+  const currentTime = isCurrent ? playerCurrentTime : 0
+  const duration = isCurrent ? playerDuration : 0
+  const limited = !!trackLimitSec && trackLimitSec > 0
+  const effectiveDuration = limited ? Math.min(trackLimitSec as number, duration || (trackLimitSec as number)) : duration
+  const effectiveVolume = volume
   const timelinePct = effectiveDuration ? (currentTime / effectiveDuration) * 100 : 0
 
-  const ensureAudio = (): HTMLAudioElement => {
-    if (audioRef.current) return audioRef.current
-
-    const audio = new Audio(url)
-    audio.preload = 'metadata'
-    audio.volume = volume
-    audio.addEventListener('loadedmetadata', () => {
-      setDuration(audio.duration || 0)
-      onDuration?.(audio.duration || 0)
-    })
-    audio.addEventListener('timeupdate', () => {
-      if (limited && audio.currentTime >= (limitSec as number)) {
-        audio.pause()
-        audio.currentTime = 0
-        setCurrentTime(0)
-        setPlaying(false)
-        return
-      }
-      setCurrentTime(audio.currentTime)
-    })
-    audio.addEventListener('ended', () => {
-      setCurrentTime(0)
-      setPlaying(false)
-    })
-    audio.addEventListener('playing', () => {
-      setLoading(false)
-      setPlaying(true)
-    })
-    audio.addEventListener('waiting', () => setLoading(true))
-    audio.addEventListener('pause', () => setPlaying(false))
-    audio.addEventListener('error', () => {
-      setLoading(false)
-      setPlaying(false)
-    })
-
-    audioRef.current = audio
-    return audio
-  }
+  useEffect(() => {
+    if (isCurrent && effectiveDuration > 0) onDuration?.(effectiveDuration)
+  }, [isCurrent, effectiveDuration, onDuration])
 
   useEffect(() => {
-    return () => {
-      audioRef.current?.pause()
-      if (audioRef.current) audioRef.current.src = ''
-    }
-  }, [])
+    reportedRef.current = false
+  }, [url])
+
+  useEffect(() => {
+    if (!isCurrent || !playing || reportedRef.current) return
+    reportedRef.current = true
+    onPlay?.()
+  }, [isCurrent, playing, onPlay])
 
   const toggle = (event: React.MouseEvent) => {
     event.stopPropagation()
-    const audio = ensureAudio()
 
-    if (playing) {
-      audio.pause()
+    if (isCurrent) {
+      togglePlay()
       return
     }
 
-    stopActivePreview?.()
-    stopActivePreview = () => audio.pause()
-    setLoading(true)
-    audio.play().then(() => setPlaying(true)).catch(() => setLoading(false))
+    playTrack(playerTrack)
   }
 
   const seekToRatio = (ratio: number) => {
-    if (!effectiveDuration) return
+    if (!isCurrent || !effectiveDuration) return
     const next = Math.min(effectiveDuration, Math.max(0, ratio * effectiveDuration))
-    const audio = ensureAudio()
-    audio.currentTime = next
-    setCurrentTime(next)
+    seekTo(next)
   }
 
   const seek = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -256,30 +233,12 @@ export function AudioPlayerBar({ url, onDuration, limitSec }: AudioPlayerBarProp
   const applyVolume = (event: React.ChangeEvent<HTMLInputElement>) => {
     const next = Number(event.target.value)
     setVolume(next)
-    setMuted(next === 0)
-    if (audioRef.current) {
-      audioRef.current.volume = next
-      audioRef.current.muted = next === 0
-    }
   }
 
   const toggleMute = (event: React.MouseEvent) => {
     event.stopPropagation()
-    const audio = audioRef.current
 
-    if (muted || volume === 0) {
-      const next = volume === 0 ? 1 : volume
-      setMuted(false)
-      setVolume(next)
-      if (audio) {
-        audio.muted = false
-        audio.volume = next
-      }
-      return
-    }
-
-    setMuted(true)
-    if (audio) audio.muted = true
+    setVolume(volume === 0 ? (lastVolumeRef.current || 1) : 0)
   }
 
   const volumeControl = (
@@ -329,7 +288,7 @@ export function AudioPlayerBar({ url, onDuration, limitSec }: AudioPlayerBarProp
         onPointerMove={(event) => {
           if (event.buttons === 1) seek(event)
         }}
-        disabled={!effectiveDuration}
+        disabled={!isCurrent || !effectiveDuration}
         aria-label={t('plugin.timeline')}
         className="soundcloud-wave relative h-10 min-w-0 flex-1 rounded-lg px-1.5 disabled:cursor-default disabled:opacity-50"
       >
@@ -376,7 +335,7 @@ export function AudioPlayerBar({ url, onDuration, limitSec }: AudioPlayerBarProp
           className="flex-shrink-0 rounded bg-accent/12 px-1 py-0.5 text-2xs font-semibold uppercase tracking-wide text-accent"
           title={t('plugin.previewOnly')}
         >
-          {t('plugin.previewShort', { seconds: limitSec as number })}
+          {t('plugin.previewShort', { seconds: trackLimitSec as number })}
         </span>
       )}
     </div>
@@ -389,6 +348,8 @@ export interface PresetComparePlayerProps {
   onDuration?: (duration: number) => void
   /** Плавающие бейджи-стикеры над плеером (напр. категория/тег пресета), до 2 шт. */
   stickers?: string[]
+  /** Вызывается один раз при первом старте воспроизведения — учёт прослушивания для ленты. */
+  onPlay?: () => void
 }
 
 /**
@@ -397,10 +358,11 @@ export interface PresetComparePlayerProps {
  * volume между wet- и dry-элементом (оба всё время играют) — так сравнение звучит
  * «вживую», без щелчков и перемотки.
  */
-export function PresetComparePlayer({ wetUrl, dryUrl, onDuration, stickers }: PresetComparePlayerProps): React.ReactElement {
+export function PresetComparePlayer({ wetUrl, dryUrl, onDuration, stickers, onPlay }: PresetComparePlayerProps): React.ReactElement {
   const { t } = useI18n()
   const wetRef = useRef<HTMLAudioElement | null>(null)
   const dryRef = useRef<HTMLAudioElement | null>(null)
+  const reportedRef = useRef(false)
   const [playing, setPlaying] = useState(false)
   const [loading, setLoading] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -459,6 +421,10 @@ export function PresetComparePlayer({ wetUrl, dryUrl, onDuration, stickers }: Pr
     wet.addEventListener('playing', () => {
       setLoading(false)
       setPlaying(true)
+      if (!reportedRef.current) {
+        reportedRef.current = true
+        onPlay?.()
+      }
     })
     wet.addEventListener('waiting', () => setLoading(true))
     wet.addEventListener('pause', () => setPlaying(false))
@@ -491,11 +457,11 @@ export function PresetComparePlayer({ wetUrl, dryUrl, onDuration, stickers }: Pr
       return
     }
 
-    stopActivePreview?.()
-    stopActivePreview = () => {
+    stopAnyPreview()
+    registerActivePreview(() => {
       wet.pause()
       dry.pause()
-    }
+    })
     setLoading(true)
     dry.currentTime = wet.currentTime
     Promise.all([wet.play(), dry.play()]).then(() => setPlaying(true)).catch(() => setLoading(false))

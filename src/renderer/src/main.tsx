@@ -4,6 +4,7 @@ import App from './App'
 import { I18nProvider } from './i18n'
 import { SearchProvider } from './hooks/useSearch'
 import { LibraryProvider } from './hooks/useLibraryIndex'
+import { TasteProvider } from './hooks/useTaste'
 import { PlayerProvider } from './components/PlayerBar'
 import './index.css'
 
@@ -12,9 +13,11 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <I18nProvider>
       <SearchProvider>
         <LibraryProvider>
-          <PlayerProvider>
-            <App />
-          </PlayerProvider>
+          <TasteProvider>
+            <PlayerProvider>
+              <App />
+            </PlayerProvider>
+          </TasteProvider>
         </LibraryProvider>
       </SearchProvider>
     </I18nProvider>

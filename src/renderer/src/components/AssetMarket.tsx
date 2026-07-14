@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import type { AssetKind, CommunityPlugin, InstallProgress, Plugin } from '../types'
 import { useI18n } from '../i18n'
 import { useSearch } from '../hooks/useSearch'
+import { useTaste } from '../hooks/useTaste'
 import { useUploadProgress } from '../hooks/useUploadProgress'
 import { useEscapeToClose } from '../hooks/useEscapeToClose'
 import {
   PluginCard, SkeletonCard, Empty, UploadSteps,
-  IconRefresh, IconX,
+  IconRefresh, IconX, SearchField,
   fmtTime,
   type CardLabels
 } from './pluginCommon'
@@ -183,6 +184,9 @@ interface UploadForm {
 }
 
 const BEAT_PREVIEW_SECONDS = 30
+const DROP_SEARCH_MIN_SKIP_SECONDS = 15
+const DROP_SEARCH_PREFERRED_SKIP_SECONDS = 30
+const DROP_ANALYSIS_BLOCK_SECONDS = 0.5
 
 type BeatPreviewStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -253,6 +257,29 @@ function encodeWavPreview(buffer: AudioBuffer, startSec: number, durationSec: nu
   return out
 }
 
+function measureBlockEnergy(channels: Float32Array[], startFrame: number, endFrame: number): { energy: number; peak: number } {
+  const frameCount = Math.max(1, endFrame - startFrame)
+  const step = Math.max(1, Math.floor(frameCount / 320))
+  let sumSquares = 0
+  let samples = 0
+  let peak = 0
+
+  for (let frame = startFrame; frame < endFrame; frame += step) {
+    for (let ch = 0; ch < channels.length; ch++) {
+      const value = channels[ch][frame] ?? 0
+      const abs = Math.abs(value)
+      peak = Math.max(peak, abs)
+      sumSquares += value * value
+      samples++
+    }
+  }
+
+  return {
+    energy: samples > 0 ? sumSquares / samples : 0,
+    peak
+  }
+}
+
 function buildWaveformPeaks(buffer: AudioBuffer, barCount = 96): number[] {
   const channelCount = Math.max(1, Math.min(2, buffer.numberOfChannels))
   const channels = Array.from({ length: channelCount }, (_, ch) => buffer.getChannelData(ch))
@@ -262,20 +289,61 @@ function buildWaveformPeaks(buffer: AudioBuffer, barCount = 96): number[] {
   for (let i = 0; i < barCount; i++) {
     const start = i * samplesPerBar
     const end = i === barCount - 1 ? buffer.length : Math.min(buffer.length, start + samplesPerBar)
-    const step = Math.max(1, Math.floor((end - start) / 180))
-    let peak = 0
-
-    for (let sample = start; sample < end; sample += step) {
-      for (let ch = 0; ch < channelCount; ch++) {
-        peak = Math.max(peak, Math.abs(channels[ch][sample] ?? 0))
-      }
-    }
-
-    peaks.push(Math.pow(peak, 0.62))
+    const { energy, peak } = measureBlockEnergy(channels, start, end)
+    const rms = Math.sqrt(energy)
+    peaks.push(Math.pow(rms * 0.82 + peak * 0.18, 0.58))
   }
 
   const maxPeak = Math.max(...peaks, 0.01)
   return peaks.map((peak) => clamp(peak / maxPeak, 0.08, 1))
+}
+
+function findHighEnergyPreviewStart(buffer: AudioBuffer, durationSec = BEAT_PREVIEW_SECONDS): number {
+  const maxStartSec = Math.max(0, buffer.duration - durationSec)
+  if (maxStartSec <= 0) return 0
+
+  const searchStartSec = Math.min(DROP_SEARCH_MIN_SKIP_SECONDS, maxStartSec)
+  const channelCount = Math.max(1, Math.min(2, buffer.numberOfChannels))
+  const channels = Array.from({ length: channelCount }, (_, ch) => buffer.getChannelData(ch))
+  const blockFrames = Math.max(1, Math.floor(buffer.sampleRate * DROP_ANALYSIS_BLOCK_SECONDS))
+  const blockCount = Math.max(1, Math.ceil(buffer.length / blockFrames))
+  const energies = new Float64Array(blockCount)
+
+  for (let block = 0; block < blockCount; block++) {
+    const startFrame = block * blockFrames
+    const endFrame = Math.min(buffer.length, startFrame + blockFrames)
+    const { energy } = measureBlockEnergy(channels, startFrame, endFrame)
+    energies[block] = energy
+  }
+
+  const prefix = new Float64Array(blockCount + 1)
+  for (let i = 0; i < blockCount; i++) {
+    prefix[i + 1] = prefix[i] + energies[i]
+  }
+
+  const windowBlocks = Math.max(1, Math.round(durationSec / DROP_ANALYSIS_BLOCK_SECONDS))
+  const firstBlock = Math.max(0, Math.floor(searchStartSec / DROP_ANALYSIS_BLOCK_SECONDS))
+  const lastBlock = Math.max(firstBlock, Math.min(blockCount - windowBlocks, Math.floor(maxStartSec / DROP_ANALYSIS_BLOCK_SECONDS)))
+  let bestBlock = firstBlock
+  let bestScore = -1
+
+  for (let block = firstBlock; block <= lastBlock; block++) {
+    const endBlock = Math.min(blockCount, block + windowBlocks)
+    const averageEnergy = (prefix[endBlock] - prefix[block]) / Math.max(1, endBlock - block)
+    const blockStartSec = block * DROP_ANALYSIS_BLOCK_SECONDS
+    const introPreference = clamp(
+      blockStartSec / DROP_SEARCH_PREFERRED_SKIP_SECONDS,
+      0.85,
+      1
+    )
+    const score = averageEnergy * introPreference
+    if (score > bestScore) {
+      bestScore = score
+      bestBlock = block
+    }
+  }
+
+  return clamp(bestBlock * DROP_ANALYSIS_BLOCK_SECONDS, 0, maxStartSec)
 }
 
 function UploadModal({ config, premium, onClose, onUploaded, notify }: {
@@ -378,6 +446,11 @@ function UploadModal({ config, premium, onClose, onUploaded, notify }: {
           audioBufferRef.current = decoded
           setBeatDuration(decoded.duration)
           setWaveformPeaks(buildWaveformPeaks(decoded))
+          setPreviewStart(
+            decoded.duration >= BEAT_PREVIEW_SECONDS
+              ? findHighEnergyPreviewStart(decoded)
+              : 0
+          )
           setBeatStatus(decoded.duration >= BEAT_PREVIEW_SECONDS ? 'ready' : 'error')
           setBeatError(
             decoded.duration >= BEAT_PREVIEW_SECONDS
@@ -968,6 +1041,7 @@ export default function AssetMarket({ kind }: { kind: AssetKind }) {
   const [adding, setAdding]           = useState(false)
   const { progress: quickProgress, start: startQuick, reset: resetQuick } = useUploadProgress()
   const [toast, setToast]             = useState<{ message: string; type: ToastType } | null>(null)
+  const { record } = useTaste()
   // Счётчик запросов: если пока грузился старый fetchAssets успел уйти и вернуться
   // более новый (например после публикации ассета), результат старого игнорируем.
   const fetchIdRef = useRef(0)
@@ -978,6 +1052,13 @@ export default function AssetMarket({ kind }: { kind: AssetKind }) {
   }, [])
 
   const allCategories = [ALL_CATEGORY, ...Array.from(new Set(assets.map((a) => a.category))).sort()]
+
+  const selectCategory = useCallback((cat: string) => {
+    setCategory(cat)
+    if (cat !== ALL_CATEGORY) {
+      record({ type: 'open', category: cat, tab: kind, itemId: cat, name: cat })
+    }
+  }, [kind, record])
 
   const fetchAssets = useCallback(async () => {
     const requestId = ++fetchIdRef.current
@@ -1036,19 +1117,25 @@ export default function AssetMarket({ kind }: { kind: AssetKind }) {
       next.delete(a.id)
       return next
     })
-    window.api.downloadAsset(a.id).then(clearPending, clearPending)
-  }, [])
+    window.api.downloadAsset(a.id).then((res) => {
+      if (res.ok) {
+        record({ type: 'download', category: a.category, tab: kind, itemId: a.id, name: a.name })
+      }
+      clearPending()
+    }, clearPending)
+  }, [kind, record])
 
   // Покупка бита: открываем ссылку оплаты автора в браузере.
   const handleBuy = useCallback((asset: Plugin) => {
     const a = asset as CommunityPlugin
     if (a.paymentUrl) {
       window.api.openExternal(a.paymentUrl)
+      record({ type: 'open', category: a.category, tab: kind, itemId: a.id, name: a.name })
       window.api.bumpCommunityDownload(a.id)   // считаем как интерес к биту
     } else {
       notify('Автор не указал ссылку для оплаты', 'error')
     }
-  }, [notify])
+  }, [kind, notify, record])
 
   const handleDelete = useCallback(async (asset: Plugin) => {
     const res = await window.api.deleteCommunityPlugin(asset.id)
@@ -1151,6 +1238,15 @@ export default function AssetMarket({ kind }: { kind: AssetKind }) {
             </span>
           </div>
 
+          {assets.length > 0 && (
+            <SearchField
+              value={search}
+              onChange={setSearch}
+              placeholder={t('common.search')}
+              className='flex-1 min-w-0 max-w-xs'
+            />
+          )}
+
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={fetchAssets}
@@ -1180,7 +1276,7 @@ export default function AssetMarket({ kind }: { kind: AssetKind }) {
             {allCategories.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setCategory(cat)}
+                onClick={() => selectCategory(cat)}
                 className={`text-2xs px-2.5 py-1 rounded-lg font-medium no-drag ${
                   category === cat ? 'text-white' : 'text-txt-muted border border-app-border/60'
                 }`}

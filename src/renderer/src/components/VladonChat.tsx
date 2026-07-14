@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
+import { useTaste } from '../hooks/useTaste'
 import type { AuthUser, AiChatMessage, AiRecommendationItem, Plugin, InstallProgress } from '../types'
 import { PluginCard, SkeletonCard } from './pluginCommon'
 
@@ -99,6 +100,7 @@ export default function VladonChat({
   isPremium: boolean
 }): React.ReactElement | null {
   const { t } = useI18n()
+  const { record } = useTaste()
   const [mode, setMode] = useState<Mode>('chat')
   const [value, setValue] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -244,7 +246,10 @@ export default function VladonChat({
   const handleInstall = useCallback(async (plugin: Plugin) => {
     setPendingIds((prev) => new Set(prev).add(plugin.id))
     try {
-      await window.api.installPlugin(plugin.id, 'marketplace')
+      const res = await window.api.installPlugin(plugin.id, 'marketplace')
+      if (res.ok) {
+        record({ type: 'download', category: plugin.category, tab: 'marketplace', itemId: plugin.id, name: plugin.name })
+      }
     } finally {
       setPendingIds((prev) => {
         if (!prev.has(plugin.id)) return prev
@@ -253,7 +258,7 @@ export default function VladonChat({
         return next
       })
     }
-  }, [])
+  }, [record])
 
   const sendChat = async (text: string) => {
     setSending(true)

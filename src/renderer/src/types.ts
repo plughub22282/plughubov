@@ -178,6 +178,63 @@ export interface ReferralRedeemResult {
   premiumUntil?: string | null
 }
 
+export type StreakRewardChoice = 'beat' | 'download'
+export type StreakRewardStage = 0 | 3 | 7 | 28
+
+export interface StreakTouchResult {
+  ok: boolean
+  error?: string
+  streakCount?: number
+  rewardPending?: boolean
+  rewardStage?: StreakRewardStage
+}
+
+export interface StreakClaimResult {
+  ok: boolean
+  error?: string
+  streakCount?: number
+}
+
+// ─── Персональная лента «Для вас» ───────────────────────────────────────────
+// Локальный профиль вкусов: что юзер слушает и скачивает, агрегировано по
+// категориям с затуханием по времени. Хранится в main (userData/taste.json),
+// работает и для free, и для премиум (в отличие от plugin_installs).
+export type TasteEventType = 'open' | 'play' | 'download'
+
+/** То, что renderer шлёт при каждом действии (проигрывание/скачивание). */
+export interface TasteRecordInput {
+  type: TasteEventType
+  category?: string
+  tab?: string
+  itemId?: string
+  name?: string
+}
+
+/** Агрегат по одной категории. */
+export interface TasteCategoryStat {
+  category: string
+  /** Аффинность с затуханием по времени — основной ключ сортировки ленты. */
+  score: number
+  opens: number
+  plays: number
+  downloads: number
+  /** ms epoch последнего события в категории. */
+  lastAt: number
+}
+
+/** Одно событие истории (для отладки/будущей ленты «недавнее»). */
+export interface TasteEvent extends Required<Omit<TasteRecordInput, 'name'>> {
+  name?: string
+  at: number
+}
+
+export interface TasteProfile {
+  categories: TasteCategoryStat[]
+  recent: TasteEvent[]
+  /** Всего учтённых событий за всё время. */
+  totalEvents: number
+}
+
 export interface AppSettings {
   vst3Path: string
   autoUpdate: boolean

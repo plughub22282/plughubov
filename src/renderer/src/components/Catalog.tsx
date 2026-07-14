@@ -2,9 +2,10 @@ import { useEffect, useState, useCallback } from 'react'
 import type { Plugin, InstallProgress, AutoInstallStatus } from '../types'
 import { useI18n } from '../i18n'
 import { useSearch } from '../hooks/useSearch'
+import { useTaste } from '../hooks/useTaste'
 import {
   PluginCard, PluginDetailsModal, SkeletonCard, Empty,
-  IconRefresh
+  IconRefresh, SearchField
 } from './pluginCommon'
 
 // ─── Catalog ──────────────────────────────────────────────────────────────────
@@ -23,6 +24,7 @@ export default function Catalog() {
   const [progressMap, setProgressMap] = useState<Record<string, InstallProgress>>({})
   const [archiveIds, setArchiveIds] = useState<Set<string>>(new Set())
   const [quota, setQuota]           = useState<AutoInstallStatus | null>(null)
+  const { record } = useTaste()
   // Плагины, по которым клик уже ушёл в handleInstall, но первый install:progress ещё
   // не пришёл — без этого кнопка остаётся активной все 2-3 сетевых round-trip'а до него.
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
@@ -44,6 +46,13 @@ export default function Catalog() {
   const refreshQuota = useCallback(async () => {
     try { setQuota(await window.api.getAutoInstallStatus()) } catch { /* ignore */ }
   }, [])
+
+  const selectCategory = useCallback((cat: string) => {
+    setCategory(cat)
+    if (cat !== ALL_CATEGORY) {
+      record({ type: 'open', category: cat, tab: 'catalog', itemId: cat, name: cat })
+    }
+  }, [record])
 
   useEffect(() => {
     fetchPlugins()
@@ -76,6 +85,9 @@ export default function Catalog() {
       if (!res.ok && res.limitReached) {
         setArchiveIds((prev) => new Set(prev).add(plugin.id))
       }
+      if (res.ok) {
+        record({ type: 'download', category: plugin.category, tab: 'catalog', itemId: plugin.id, name: plugin.name })
+      }
     } finally {
       setPendingIds((prev) => {
         if (!prev.has(plugin.id)) return prev
@@ -85,11 +97,14 @@ export default function Catalog() {
       })
       refreshQuota()
     }
-  }, [refreshQuota])
+  }, [record, refreshQuota])
 
-  const handleArchive = useCallback((plugin: Plugin) => {
-    window.api.downloadPluginArchive(plugin.id, 'catalog')
-  }, [])
+  const handleArchive = useCallback(async (plugin: Plugin) => {
+    const res = await window.api.downloadPluginArchive(plugin.id, 'catalog')
+    if (res.ok) {
+      record({ type: 'download', category: plugin.category, tab: 'catalog', itemId: plugin.id, name: plugin.name })
+    }
+  }, [record])
 
   const filtered = plugins.filter((p) => {
     const q = search.toLowerCase()
@@ -128,6 +143,15 @@ export default function Catalog() {
               {loadState === 'loading' ? t('common.loading') : isOnline ? t('common.online') : t('common.error')}
             </span>
           </div>
+
+          {plugins.length > 0 && (
+            <SearchField
+              value={search}
+              onChange={setSearch}
+              placeholder={t('common.search')}
+              className='flex-1 min-w-0 max-w-xs'
+            />
+          )}
 
           <div className="ml-auto flex items-center gap-2">
             {/* Остаток суточных автоустановок (только для free). */}
@@ -169,7 +193,7 @@ export default function Catalog() {
             {allCategories.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setCategory(cat)}
+                onClick={() => selectCategory(cat)}
                 className={`text-2xs px-2.5 py-1 rounded-lg font-medium no-drag ${
                   category === cat ? 'text-white' : 'text-txt-muted border border-app-border/60'
                 }`}

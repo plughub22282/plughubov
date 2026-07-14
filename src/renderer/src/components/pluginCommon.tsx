@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react'
 import type { Plugin, InstallProgress, UploadStep } from '../types'
 import { useI18n } from '../i18n'
+import { useTaste } from '../hooks/useTaste'
 import { AudioPlayerBar, PresetComparePlayer } from './AudioPlayer'
 import { PremiumBadge } from './PremiumBadge'
 import { ImageWithFallback } from './ImageWithFallback'
@@ -700,8 +701,14 @@ export function PluginCard({
   showArchive, onArchive, pending, onOpenDetails, fallbackIcon
 }: PluginCardProps) {
   const { t } = useI18n()
+  const { record } = useTaste()
   const [durSec, setDurSec] = useState(0)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+
+  const notePlay = useCallback(
+    () => record({ type: 'play', category: plugin.category, tab: plugin.id, itemId: plugin.id, name: plugin.name }),
+    [record, plugin.category, plugin.id, plugin.name]
+  )
 
   return (
     <div
@@ -815,11 +822,27 @@ export function PluginCard({
           wetUrl={previewWetUrl}
           dryUrl={previewDryUrl}
           onDuration={setDurSec}
+          onPlay={notePlay}
           stickers={[plugin.category, plugin.tags?.[0]].filter((v): v is string => !!v)}
         />
       ) : (
         /* Мини-плеер с таймлайном (лупы, биты) */
-        previewUrl && <AudioPlayerBar url={previewUrl} onDuration={setDurSec} limitSec={previewLimitSec} />
+        previewUrl && (
+          <AudioPlayerBar
+            url={previewUrl}
+            track={{
+              id: plugin.id,
+              title: plugin.name,
+              author: plugin.author,
+              iconUrl: plugin.iconUrl,
+              category: plugin.category,
+              tab: plugin.id,
+              limitSec: previewLimitSec
+            }}
+            onDuration={setDurSec}
+            limitSec={previewLimitSec}
+          />
+        )
       )}
 
       {/* Footer */}

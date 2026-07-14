@@ -16,10 +16,12 @@ import OnboardingTour from './components/OnboardingTour'
 import PremiumChat from './components/PremiumChat'
 import { PlayerBar, usePlayer } from './components/PlayerBar'
 import { PremiumBadge } from './components/PremiumBadge'
+import { StreakRewardModal } from './components/StreakRewardModal'
 import { SearchField } from './components/pluginCommon'
 import GlobalSearchDropdown from './components/GlobalSearchDropdown'
 import { useAuth } from './hooks/useAuth'
 import { useSearch } from './hooks/useSearch'
+import { useStreak } from './hooks/useStreak'
 import { useI18n } from './i18n'
 import { applyTheme } from './utils/theme'
 import type { Tab } from './types'
@@ -207,6 +209,7 @@ const NAV_COLLAPSE_STORAGE_KEY = 'vst3manager.nav.collapsedSections'
 
 export default function App(): React.ReactElement {
   const auth = useAuth()
+  const streak = useStreak(auth.status)
   const { t } = useI18n()
   const { query: searchQuery, setQuery: setSearchQuery } = useSearch()
   const { current: playerTrack } = usePlayer()
@@ -214,6 +217,7 @@ export default function App(): React.ReactElement {
   const [searchFocused, setSearchFocused] = useState(false)
   const [referralDeepLinkMsg, setReferralDeepLinkMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [showTour, setShowTour] = useState(false)
+  const [streakModalOpen, setStreakModalOpen] = useState(false)
 
   useEffect(() => {
     window.api.getSettings().then((s) => applyTheme(s.theme ?? 'carbon'))
@@ -368,6 +372,9 @@ export default function App(): React.ReactElement {
 
   const displayName = auth.state.user?.displayName || auth.state.user?.email || '?'
   const avatarLetter = displayName.charAt(0).toUpperCase()
+  const nextStreakThreshold = [3, 7, 28].find((threshold) => threshold > streak.streakCount) ?? 28
+  const daysToNextStreakReward = Math.max(0, nextStreakThreshold - streak.streakCount)
+  const streakTitle = streak.error ?? t('streak.tooltip', { days: daysToNextStreakReward })
 
   return (
     <div
@@ -570,6 +577,23 @@ export default function App(): React.ReactElement {
                 </div>
                 <div className="text-2xs mt-0.5 flex items-center gap-1">
                   <span className="text-txt-muted">{isAuthor ? t('role.author') : t('role.user')}</span>
+                  <button
+                    type="button"
+                    onClick={() => { if (streak.rewardPending) setStreakModalOpen(true) }}
+                    title={streakTitle}
+                    aria-label={`${t('streak.title')}: ${streak.streakCount}`}
+                    className={`relative inline-flex h-5 items-center gap-1 rounded-full border px-1.5 text-[11px] font-semibold ${
+                      streak.rewardPending
+                        ? 'border-status-warning/50 bg-status-warning/12 text-status-warning hover:bg-status-warning/15'
+                        : 'border-app-border/60 bg-app-panel/45 text-txt-muted'
+                    } ${streak.rewardPending ? 'cursor-pointer' : 'cursor-default'}`}
+                  >
+                    <span aria-hidden="true">🔥</span>
+                    <span>{streak.loading ? '…' : streak.streakCount}</span>
+                    {streak.rewardPending && (
+                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-status-error shadow-[0_0_8px_rgba(248,113,113,.65)]" />
+                    )}
+                  </button>
                 </div>
               </div>
             </div>
@@ -621,6 +645,14 @@ export default function App(): React.ReactElement {
 
       <PlayerBar />
       <PremiumChat user={auth.state.user ? { ...auth.state.user, isPremium } : null} />
+      {streakModalOpen && (
+        <StreakRewardModal
+          rewardStage={streak.rewardStage}
+          claimPending={streak.claimPending}
+          onClaim={streak.claim}
+          onClose={() => setStreakModalOpen(false)}
+        />
+      )}
 
       {/* onboardingCompleted придёт через auth:changed после completeOnboarding — оверлей закроется сам */}
       {auth.status === 'signedIn' && !auth.state.onboardingCompleted && (
@@ -678,8 +710,16 @@ declare global {
         onDeepLinkResult: (cb: (result: import('./types').ReferralDeepLinkResult) => void) => () => void
         consumeDeepLinkResult: () => Promise<import('./types').ReferralDeepLinkResult | null>
       }
+      streak: {
+        touch: () => Promise<import('./types').StreakTouchResult>
+        claim: (choice: import('./types').StreakRewardChoice) => Promise<import('./types').StreakClaimResult>
+      }
       getSettings: () => Promise<import('./types').AppSettings>
       saveSettings: (s: import('./types').AppSettings) => Promise<{ ok: boolean }>
+      taste: {
+        record: (input: import('./types').TasteRecordInput) => Promise<{ ok: boolean }>
+        get: () => Promise<import('./types').TasteProfile>
+      }
       listPlugins: () => Promise<import('./types').Plugin[]>
       installPlugin: (id: string, sourceTab?: string) => Promise<import('./types').InstallResult>
       downloadPluginArchive: (id: string, sourceTab?: string) => Promise<{ ok: boolean; path?: string; error?: string }>

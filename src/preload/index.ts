@@ -264,6 +264,61 @@ export interface ReferralRedeemResult {
   premiumUntil?: string | null
 }
 
+// ─── Streak (зеркало main/streak.ts) ─────────────────────────────────────────
+
+export type StreakRewardChoice = 'beat' | 'download'
+export type StreakRewardStage = 0 | 3 | 7 | 28
+
+export interface StreakTouchResult {
+  ok: boolean
+  error?: string
+  streakCount?: number
+  rewardPending?: boolean
+  rewardStage?: StreakRewardStage
+}
+
+export interface StreakClaimResult {
+  ok: boolean
+  error?: string
+  streakCount?: number
+}
+
+// ─── Taste / лента «Для вас» (зеркало main/taste.ts) ─────────────────────────
+
+export type TasteEventType = 'open' | 'play' | 'download'
+
+export interface TasteRecordInput {
+  type: TasteEventType
+  category?: string
+  tab?: string
+  itemId?: string
+  name?: string
+}
+
+export interface TasteCategoryStat {
+  category: string
+  score: number
+  opens: number
+  plays: number
+  downloads: number
+  lastAt: number
+}
+
+export interface TasteEvent {
+  type: TasteEventType
+  category: string
+  tab: string
+  itemId: string
+  name?: string
+  at: number
+}
+
+export interface TasteProfile {
+  categories: TasteCategoryStat[]
+  recent: TasteEvent[]
+  totalEvents: number
+}
+
 const api = {
   // Window controls
   minimize: () => ipcRenderer.send('window:minimize'),
@@ -307,6 +362,13 @@ const api = {
     // обработали до того, как окно успело подписаться на onDeepLinkResult.
     consumeDeepLinkResult: (): Promise<ReferralDeepLinkResult | null> =>
       ipcRenderer.invoke('referral:consumeDeepLinkResult')
+  },
+
+  // Streak: подряд идущие дни входа, награды на 3/7/28 дне.
+  streak: {
+    touch: (): Promise<StreakTouchResult> => ipcRenderer.invoke('streak:touch'),
+    claim: (choice: StreakRewardChoice): Promise<StreakClaimResult> =>
+      ipcRenderer.invoke('streak:claim', choice)
   },
 
   // Премиум-чат (общая комната; доступ проверяется в main и в БД через RLS)
@@ -357,6 +419,13 @@ const api = {
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   saveSettings: (s: AppSettings): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('settings:save', s),
+
+  // Профиль вкусов для ленты «Для вас» (локальная история прослушиваний/скачиваний)
+  taste: {
+    record: (input: TasteRecordInput): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('taste:record', input),
+    get: (): Promise<TasteProfile> => ipcRenderer.invoke('taste:get')
+  },
 
   // Каталог (официальные плагины)
   listPlugins: (): Promise<Plugin[]> => ipcRenderer.invoke('plugins:list'),
