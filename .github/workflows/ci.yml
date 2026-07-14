@@ -1,0 +1,44 @@
+name: CI
+
+# Подэтап 1: минимальный зелёный baseline.
+# Только проверки (lint/typecheck/test/build). Никаких package/release, публикации
+# артефактов, production-секретов или pull_request_target.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Минимальные права: воркфлоу только читает репозиторий.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22' # актуальная поддерживаемая Node LTS
+          cache: npm
+          cache-dependency-path: package-lock.json # только корневой lock; web/package-lock.json не влияет на ключ
+
+      - name: Install (clean, from lockfile)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
