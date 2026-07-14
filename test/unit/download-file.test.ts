@@ -8,11 +8,10 @@ import {
   TOTAL_TIMEOUT_MS
 } from '../../src/main/download-file'
 
-// Characterization-тесты текущего transport-слоя (downloadFile).
-// Поведение НЕ проектируется — фиксируется как есть на момент механического выноса,
-// ДО функционального hardening (HTTPS-only, byte limit, total timeout, cleanup).
-// Небезопасные свойства (HTTP разрешён, downgrade-redirect, отсутствие лимита и т.д.)
-// намеренно НЕ закрепляются как желаемые — они вынесены в it.todo ниже.
+// Тесты transport-слоя (downloadFile) после security-hardening.
+// Покрывают: HTTPS-only и защиту редиректов, лимит размера и безопасный прогресс,
+// модель таймаутов (connect/idle/total) с единым дедлайном на всю цепочку редиректов,
+// атомарную запись через ${dest}.part + rename и единый идемпотентный путь очистки.
 //
 // Реальная сеть/диск не задействованы: http/https/fs и download-safety мокируются
 // теми же specifier'ами, что импортирует production-модуль. Транспорт драйвится
