@@ -1,5 +1,4 @@
 import https from 'https'
-import http from 'http'
 import { IncomingMessage } from 'http'
 import { createWriteStream } from 'fs'
 import { resolveAllowedDownloadAddresses, safeDownloadLookup } from './download-safety'
@@ -23,7 +22,9 @@ export async function downloadFile(
   } catch {
     throw new Error('Unsupported URL protocol')
   }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+  // Security: HTTPS-only. Обычный HTTP (в т.ч. как цель HTTPS→HTTP downgrade-редиректа)
+  // отклоняется до DNS и до открытия сокета — fail-closed, dev-HTTP не поддерживается.
+  if (parsed.protocol !== 'https:') {
     throw new Error('Unsupported URL protocol')
   }
 
@@ -31,19 +32,35 @@ export async function downloadFile(
   await resolveAllowedDownloadAddresses(parsed.hostname)
 
   return new Promise((resolve, reject) => {
-    const proto = parsed.protocol === 'https:' ? https : http
-    const req = proto.get(parsed, { lookup: safeDownloadLookup }, (res: IncomingMessage) => {
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        res.resume() // release redirect response socket
+    const req = https.get(parsed, { lookup: safeDownloadLookup }, (res: IncomingMessage) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400) {
+        res.resume() // release redirect response socket before continuing/rejecting
+        if (!res.headers.location) {
+          // 3xx без Location — не редирект: некуда идти, зависать нельзя.
+          reject(new Error(`HTTP ${res.statusCode}`))
+          return
+        }
         if (redirectsLeft <= 0) {
           reject(new Error('Too many redirects.'))
           return
         }
-        const nextUrl = new URL(res.headers.location, parsed).toString()
+        // Security: невалидный Location не должен ронять response-callback необработанным
+        // исключением — контролируемо отклоняем вместо синхронного throw в new URL().
+        let nextUrl: string
+        try {
+          nextUrl = new URL(res.headers.location, parsed).toString()
+        } catch {
+          reject(new Error('Invalid redirect location.'))
+          return
+        }
+        // Каждый hop заново проходит protocol-проверку, SSRF-preflight и safe lookup внутри
+        // рекурсивного вызова: HTTPS→HTTP downgrade и заблокированный хост отклоняются там же.
+        // Общий redirect budget не сбрасывается — передаётся уменьшенным.
         downloadFile(nextUrl, dest, onProgress, rateBytesPerSec, redirectsLeft - 1).then(resolve).catch(reject)
         return
       }
       if (res.statusCode !== 200) {
+        res.resume() // release non-2xx response socket before rejecting
         reject(new Error(`HTTP ${res.statusCode}`))
         return
       }

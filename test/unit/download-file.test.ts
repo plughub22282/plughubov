@@ -170,15 +170,13 @@ describe('downloadFile — выбор протокола', () => {
     expect(calls[0].protocol).toBe('https')
   })
 
-  it('HTTP-URL использует http.get (текущее поведение до hardening)', async () => {
-    responseQueue.push(new FakeResponse(200, {}))
-    const p = downloadFile('http://example.com/a.zip', '/tmp/a.zip', vi.fn())
-    await flushAll()
-    files[0].emit('finish')
-    await p
-    expect(mocks.httpGet).toHaveBeenCalledTimes(1)
+  it('HTTP-URL отклоняется до SSRF и до запроса (HTTPS-only)', async () => {
+    await expect(downloadFile('http://example.com/a.zip', '/tmp/a.zip', vi.fn())).rejects.toThrow(
+      'Unsupported URL protocol'
+    )
+    expect(mocks.resolveAllowedDownloadAddresses).not.toHaveBeenCalled()
     expect(mocks.httpsGet).not.toHaveBeenCalled()
-    expect(calls[0].protocol).toBe('http')
+    expect(mocks.httpGet).not.toHaveBeenCalled()
   })
 
   it('неподдерживаемый протокол отклоняется до SSRF и до запроса', async () => {
@@ -362,6 +360,52 @@ describe('downloadFile — редиректы (текущее поведение
     await expect(p).rejects.toThrow('Too many redirects.')
     expect(calls[0].res.resumeCalls).toBeGreaterThan(0)
   })
+
+  it('HTTPS → HTTPS redirect (absolute) разрешается', async () => {
+    responseQueue.push(new FakeResponse(301, { location: 'https://cdn.example.com/final.zip' }))
+    responseQueue.push(new FakeResponse(200, {}))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await flushAll()
+    files[0].emit('finish')
+    await expect(p).resolves.toBeUndefined()
+    expect(mocks.httpsGet).toHaveBeenCalledTimes(2)
+    expect(mocks.httpGet).not.toHaveBeenCalled()
+  })
+
+  it('HTTPS → HTTP redirect (downgrade) отклоняется без открытия http-запроса', async () => {
+    responseQueue.push(new FakeResponse(302, { location: 'http://cdn.example.com/final.zip' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await expect(p).rejects.toThrow('Unsupported URL protocol')
+    expect(calls[0].res.resumeCalls).toBeGreaterThan(0) // сокет первого ответа освобождён
+    expect(mocks.httpGet).not.toHaveBeenCalled()
+    expect(mocks.httpsGet).toHaveBeenCalledTimes(1)
+  })
+
+  it('невалидный Location отклоняется контролируемой ошибкой (без uncaught)', async () => {
+    responseQueue.push(new FakeResponse(302, { location: 'http://[bad' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await expect(p).rejects.toThrow('Invalid redirect location.')
+    expect(calls[0].res.resumeCalls).toBeGreaterThan(0)
+    expect(calls.length).toBe(1) // второй запрос не открывался
+  })
+
+  it('3xx без Location не зависает: сокет освобождён, reject как HTTP <code>', async () => {
+    responseQueue.push(new FakeResponse(302, {}))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await expect(p).rejects.toThrow('HTTP 302')
+    expect(calls[0].res.resumeCalls).toBeGreaterThan(0)
+    expect(calls.length).toBe(1)
+  })
+
+  it('заблокированный хост на втором hop отклоняется preflight-ом', async () => {
+    responseQueue.push(new FakeResponse(302, { location: 'https://blocked.example/final.zip' }))
+    mocks.resolveAllowedDownloadAddresses
+      .mockResolvedValueOnce([{ address: '1.2.3.4', family: 4 }])
+      .mockRejectedValueOnce(new Error('Загрузка с этого адреса запрещена.'))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await expect(p).rejects.toThrow('Загрузка с этого адреса запрещена.')
+    expect(calls.length).toBe(1) // второй сокет не открыт (preflight до get)
+  })
 })
 
 // ─── Ошибочные ветки ──────────────────────────────────────────────────────────
@@ -455,10 +499,7 @@ describe('downloadFile — backpressure', () => {
 
 // ─── Будущие security-требования (НЕ закрепляем текущее небезопасное поведение) ─
 
-describe('downloadFile — будущие security-инварианты (Этапы 2–4)', () => {
-  it.todo('production HTTP должен отклоняться (HTTPS-only)')
-  it.todo('HTTPS → HTTP redirect (downgrade) должен отклоняться')
-  it.todo('невалидный Location не должен приводить к uncaught exception')
+describe('downloadFile — будущие security-инварианты (Этапы 3–4)', () => {
   it.todo('Content-Length выше лимита должен отклоняться до записи')
   it.todo('chunked body выше лимита должен прерывать загрузку')
   it.todo('progress не должен превышать 100')
