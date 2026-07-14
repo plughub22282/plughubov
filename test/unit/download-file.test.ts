@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'events'
-import { downloadFile } from '../../src/main/download-file'
+import { downloadFile, MAX_DOWNLOAD_BYTES } from '../../src/main/download-file'
 
 // Characterization-тесты текущего transport-слоя (downloadFile).
 // Поведение НЕ проектируется — фиксируется как есть на момент механического выноса,
@@ -51,6 +51,9 @@ class FakeResponse extends EventEmitter {
   pipe(dest: unknown): unknown {
     this.piped = dest
     return dest
+  }
+  destroy(): void {
+    this.destroyed = true
   }
 }
 
@@ -306,6 +309,96 @@ describe('downloadFile — progress', () => {
     files[0].emit('finish')
     await p
   })
+
+  it('прогресс не превышает 100 при теле больше заявленного Content-Length', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': '4' }))
+    const onProgress = vi.fn()
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', onProgress, 1000)
+    await flushAll()
+    const res = calls[0].res
+    res.emit('data', Buffer.from('12345678')) // 8 байт при заявленных 4
+    for (const [pct] of onProgress.mock.calls) {
+      expect(Number.isFinite(pct)).toBe(true)
+      expect(pct).toBeGreaterThanOrEqual(0)
+      expect(pct).toBeLessThanOrEqual(100)
+    }
+    res.emit('end')
+    await p
+  })
+
+  it('не придумывает прогресс при некорректном Content-Length', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': 'not-a-number' }))
+    const onProgress = vi.fn()
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', onProgress, 1000)
+    await flushAll()
+    calls[0].res.emit('data', Buffer.from('abcd'))
+    expect(onProgress).not.toHaveBeenCalled()
+    calls[0].res.emit('end')
+    await p
+  })
+})
+
+// ─── Byte limit ───────────────────────────────────────────────────────────────
+
+describe('downloadFile — лимит размера', () => {
+  it('невалидный maxBytes (0/NaN/Infinity/отрицательный) отклоняется до сети', async () => {
+    for (const bad of [0, NaN, Infinity, -1]) {
+      await expect(
+        downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 0, 5, bad)
+      ).rejects.toThrow('Invalid maximum download size.')
+    }
+    expect(mocks.resolveAllowedDownloadAddresses).not.toHaveBeenCalled()
+    expect(mocks.httpsGet).not.toHaveBeenCalled()
+  })
+
+  it('Content-Length больше лимита отклоняется до открытия файла', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': '11' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 0, 5, 10)
+    await expect(p).rejects.toThrow('Download exceeds maximum size.')
+    expect(mocks.createWriteStream).not.toHaveBeenCalled()
+    expect(calls[0].res.resumeCalls).toBeGreaterThan(0)
+  })
+
+  it('Content-Length ровно лимиту разрешается', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': '10' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 0, 5, 10)
+    await flushAll()
+    expect(mocks.createWriteStream).toHaveBeenCalledTimes(1)
+    files[0].emit('finish')
+    await expect(p).resolves.toBeUndefined()
+  })
+
+  it('Content-Length = лимит + 1 отклоняется', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': '11' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 0, 5, 10)
+    await expect(p).rejects.toThrow('Download exceeds maximum size.')
+  })
+
+  it('chunked-тело (free) превышающее лимит рвёт соединение', async () => {
+    responseQueue.push(new FakeResponse(200, {})) // без Content-Length
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 1000, 5, 10)
+    await flushAll()
+    const res = calls[0].res
+    res.emit('data', Buffer.from('x'.repeat(6)))
+    res.emit('data', Buffer.from('y'.repeat(6))) // суммарно 12 > 10
+    await expect(p).rejects.toThrow('Download exceeds maximum size.')
+    expect(res.destroyed).toBe(true)
+    expect(calls[0].req.destroyed).toBe(true)
+  })
+
+  it('тело (premium) больше заявленного Content-Length не обходит лимит', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': '4' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 0, 5, 10)
+    await flushAll()
+    const res = calls[0].res
+    res.emit('data', Buffer.from('z'.repeat(11))) // 11 > 10, хотя заявлено 4
+    await expect(p).rejects.toThrow('Download exceeds maximum size.')
+    expect(res.destroyed).toBe(true)
+  })
+
+  it('production-дефолт maxBytes равен 1 GiB', () => {
+    expect(MAX_DOWNLOAD_BYTES).toBe(1024 * 1024 * 1024)
+  })
 })
 
 // ─── Redirects ────────────────────────────────────────────────────────────────
@@ -499,10 +592,7 @@ describe('downloadFile — backpressure', () => {
 
 // ─── Будущие security-требования (НЕ закрепляем текущее небезопасное поведение) ─
 
-describe('downloadFile — будущие security-инварианты (Этапы 3–4)', () => {
-  it.todo('Content-Length выше лимита должен отклоняться до записи')
-  it.todo('chunked body выше лимита должен прерывать загрузку')
-  it.todo('progress не должен превышать 100')
+describe('downloadFile — будущие security-инварианты (Этап 4)', () => {
   it.todo('partial-файл должен удаляться при любой ошибке')
   it.todo('общий timeout должен покрывать цепочку редиректов')
   it.todo('stream не должен писать после reject')

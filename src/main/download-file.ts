@@ -4,6 +4,12 @@ import { createWriteStream } from 'fs'
 import { resolveAllowedDownloadAddresses, safeDownloadLookup } from './download-safety'
 
 /**
+ * Абсолютный потолок размера одной загрузки — единый source of truth (1 GiB).
+ * Защищает диск и память main-процесса от бесконтрольно большого тела ответа.
+ */
+export const MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
+
+/**
  * HTTP(S)-транспорт скачивания файла на диск с прогрессом и клиентским throttling.
  * Механически вынесено из src/main/index.ts без изменения поведения.
  * SSRF/DNS-rebinding guard делегируется download-safety.ts (preflight + socket lookup).
@@ -14,8 +20,15 @@ export async function downloadFile(
   dest: string,
   onProgress: (pct: number) => void,
   rateBytesPerSec = 0,
-  redirectsLeft = 5
+  redirectsLeft = 5,
+  maxBytes = MAX_DOWNLOAD_BYTES
 ): Promise<void> {
+  // Security: лимит размера обязателен и должен быть корректным. NaN/Infinity/0/отрицательное
+  // означало бы fail-open (нет потолка) — отклоняем до сети.
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
+    throw new Error('Invalid maximum download size.')
+  }
+
   let parsed: URL
   try {
     parsed = new URL(url)
@@ -56,7 +69,7 @@ export async function downloadFile(
         // Каждый hop заново проходит protocol-проверку, SSRF-preflight и safe lookup внутри
         // рекурсивного вызова: HTTPS→HTTP downgrade и заблокированный хост отклоняются там же.
         // Общий redirect budget не сбрасывается — передаётся уменьшенным.
-        downloadFile(nextUrl, dest, onProgress, rateBytesPerSec, redirectsLeft - 1).then(resolve).catch(reject)
+        downloadFile(nextUrl, dest, onProgress, rateBytesPerSec, redirectsLeft - 1, maxBytes).then(resolve).catch(reject)
         return
       }
       if (res.statusCode !== 200) {
@@ -64,20 +77,50 @@ export async function downloadFile(
         reject(new Error(`HTTP ${res.statusCode}`))
         return
       }
-      const total = parseInt(res.headers['content-length'] ?? '0', 10)
+
+      // Security: доверяем Content-Length только если это корректное неотрицательное целое.
+      // NaN/отрицательное/дробное трактуем как «неизвестно» — размер контролирует рантайм-счётчик.
+      const rawLen = res.headers['content-length']
+      const declared = rawLen !== undefined ? Number(rawLen) : NaN
+      const hasDeclared = Number.isInteger(declared) && declared >= 0
+      // Заявленный размер выше потолка отклоняем ДО открытия файла и записи.
+      if (hasDeclared && declared > maxBytes) {
+        res.resume() // release oversized response socket before rejecting
+        reject(new Error('Download exceeds maximum size.'))
+        return
+      }
+      const total = hasDeclared ? declared : 0
       let downloaded = 0
       const file = createWriteStream(dest)
       file.on('finish', () => file.close(() => resolve()))
       file.on('error', reject)
       res.on('error', reject)
 
+      // Прогресс всегда конечный и в диапазоне 0–100 (тело больше заявленного не даёт >100).
+      const reportProgress = (): void => {
+        if (total > 0) onProgress(Math.min(100, Math.max(0, Math.round((downloaded / total) * 100))))
+      }
+      // Security: фактические байты (в любой ветке) не должны превысить потолок, даже если
+      // сервер соврал в Content-Length или прислал больше. При превышении рвём соединение.
+      let tooLarge = false
+      const enforceLimit = (): boolean => {
+        if (downloaded <= maxBytes) return false
+        tooLarge = true
+        res.destroy()
+        req.destroy()
+        reject(new Error('Download exceeds maximum size.'))
+        return true
+      }
+
       if (rateBytesPerSec > 0) {
         // Token-bucket throttling for free downloads.
         let allowance = rateBytesPerSec
         let last = Date.now()
         res.on('data', (chunk: Buffer) => {
+          if (tooLarge) return
           downloaded += chunk.length
-          if (total > 0) onProgress(Math.round((downloaded / total) * 100))
+          if (enforceLimit()) return
+          reportProgress()
           const canWrite = file.write(chunk)
           const now = Date.now()
           allowance = Math.min(rateBytesPerSec, allowance + ((now - last) / 1000) * rateBytesPerSec)
@@ -95,8 +138,10 @@ export async function downloadFile(
         res.on('end', () => file.end())
       } else {
         res.on('data', (chunk: Buffer) => {
+          if (tooLarge) return
           downloaded += chunk.length
-          if (total > 0) onProgress(Math.round((downloaded / total) * 100))
+          if (enforceLimit()) return
+          reportProgress()
         })
         res.pipe(file)
       }
