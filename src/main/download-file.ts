@@ -1,6 +1,6 @@
 import https from 'https'
 import { IncomingMessage } from 'http'
-import { createWriteStream } from 'fs'
+import { createWriteStream, rename, unlink } from 'fs'
 import { resolveAllowedDownloadAddresses, safeDownloadLookup } from './download-safety'
 
 /**
@@ -9,11 +9,26 @@ import { resolveAllowedDownloadAddresses, safeDownloadLookup } from './download-
  */
 export const MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024
 
+/** Таймаут установления соединения / получения заголовков ответа. */
+export const CONNECT_TIMEOUT_MS = 30_000
+/** Таймаут простоя: максимум времени между чанками тела при активной передаче. */
+export const IDLE_TIMEOUT_MS = 60_000
 /**
- * HTTP(S)-транспорт скачивания файла на диск с прогрессом и клиентским throttling.
- * Механически вынесено из src/main/index.ts без изменения поведения.
- * SSRF/DNS-rebinding guard делегируется download-safety.ts (preflight + socket lookup).
- * Модуль не зависит от Electron.
+ * Общий дедлайн всей операции, включая цепочку редиректов.
+ * 1 GiB на свободной скорости (875000 Б/с) ≈ 1227 с; 1800 с (30 мин) покрывает это
+ * с запасом на редиректы и рукопожатия и НЕ сбрасывается между hop-ами.
+ */
+export const TOTAL_TIMEOUT_MS = 30 * 60 * 1000
+
+/**
+ * HTTPS-транспорт скачивания файла на диск с прогрессом и клиентским throttling.
+ * Пишет во временный `${dest}.part` и атомарно переименовывает в dest только после
+ * полного успешного закрытия; при любой ошибке .part удаляется. SSRF/DNS-rebinding
+ * guard делегируется download-safety.ts (preflight + socket lookup). Не зависит от Electron.
+ *
+ * `deadline` — абсолютный общий дедлайн (мс, Date.now-шкала). На верхнем вызове не
+ * задаётся и вычисляется из TOTAL_TIMEOUT_MS; при редиректе передаётся неизменным,
+ * поэтому единый дедлайн покрывает всю цепочку. Продакшн вызывает без него.
  */
 export async function downloadFile(
   url: string,
@@ -21,7 +36,8 @@ export async function downloadFile(
   onProgress: (pct: number) => void,
   rateBytesPerSec = 0,
   redirectsLeft = 5,
-  maxBytes = MAX_DOWNLOAD_BYTES
+  maxBytes = MAX_DOWNLOAD_BYTES,
+  deadline?: number
 ): Promise<void> {
   // Security: лимит размера обязателен и должен быть корректным. NaN/Infinity/0/отрицательное
   // означало бы fail-open (нет потолка) — отклоняем до сети.
@@ -44,17 +60,94 @@ export async function downloadFile(
   // Security: verify every resolved address here and again in the socket lookup to stop DNS rebinding.
   await resolveAllowedDownloadAddresses(parsed.hostname)
 
-  return new Promise((resolve, reject) => {
-    const req = https.get(parsed, { lookup: safeDownloadLookup }, (res: IncomingMessage) => {
+  // Общий дедлайн устанавливается один раз и сохраняется на всех редирект-hop-ах.
+  const totalDeadline = deadline ?? Date.now() + TOTAL_TIMEOUT_MS
+
+  return new Promise<void>((resolve, reject) => {
+    const partPath = `${dest}.part`
+    let settled = false
+    let file: ReturnType<typeof createWriteStream> | undefined
+    let response: IncomingMessage | undefined
+    let req: ReturnType<typeof https.get> | undefined
+    let connectTimer: ReturnType<typeof setTimeout> | undefined
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    let totalTimer: ReturnType<typeof setTimeout> | undefined
+
+    const clearTimers = (): void => {
+      if (connectTimer) clearTimeout(connectTimer)
+      if (idleTimer) clearTimeout(idleTimer)
+      if (totalTimer) clearTimeout(totalTimer)
+      connectTimer = idleTimer = totalTimer = undefined
+    }
+
+    // Единое идемпотентное завершение с ошибкой: гасим таймеры, рвём сокеты и файловый
+    // поток, удаляем .part и только потом reject — ровно один раз. Поздние события,
+    // resume и записи после этого игнорируются (см. проверки `settled`).
+    const fail = (err: Error): void => {
+      if (settled) return
+      settled = true
+      clearTimers()
+      req?.destroy()
+      response?.destroy()
+      file?.destroy()
+      // Downloader владеет partial-файлом: удаляем best-effort, reject в любом случае.
+      unlink(partPath, () => reject(err))
+    }
+
+    // Единое идемпотентное успешное завершение: атомарный rename .part → dest.
+    // dest считается успешным только после удачного rename.
+    const succeed = (): void => {
+      if (settled) return
+      settled = true
+      clearTimers()
+      rename(partPath, dest, (err) => {
+        if (err) {
+          unlink(partPath, () => reject(err))
+          return
+        }
+        resolve()
+      })
+    }
+
+    // Делегирование редирект-hop-у: этот вызов перестаёт владеть жизненным циклом и
+    // просто зеркалит результат рекурсии; общий дедлайн передаётся неизменным.
+    const delegateRedirect = (nextUrl: string): void => {
+      settled = true
+      clearTimers()
+      downloadFile(nextUrl, dest, onProgress, rateBytesPerSec, redirectsLeft - 1, maxBytes, totalDeadline)
+        .then(resolve)
+        .catch(reject)
+    }
+
+    const armIdle = (): void => {
+      if (idleTimer) clearTimeout(idleTimer)
+      idleTimer = setTimeout(() => fail(new Error('Timeout')), IDLE_TIMEOUT_MS)
+    }
+
+    // Общий дедлайн и таймаут соединения армируются до открытия сокета.
+    totalTimer = setTimeout(() => fail(new Error('Timeout')), Math.max(0, totalDeadline - Date.now()))
+    connectTimer = setTimeout(() => fail(new Error('Timeout')), CONNECT_TIMEOUT_MS)
+
+    req = https.get(parsed, { lookup: safeDownloadLookup }, (res: IncomingMessage) => {
+      if (settled) {
+        res.resume() // соединение/дедлайн уже истекли — освобождаем сокет
+        return
+      }
+      response = res
+      if (connectTimer) {
+        clearTimeout(connectTimer)
+        connectTimer = undefined
+      }
+
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400) {
         res.resume() // release redirect response socket before continuing/rejecting
         if (!res.headers.location) {
           // 3xx без Location — не редирект: некуда идти, зависать нельзя.
-          reject(new Error(`HTTP ${res.statusCode}`))
+          fail(new Error(`HTTP ${res.statusCode}`))
           return
         }
         if (redirectsLeft <= 0) {
-          reject(new Error('Too many redirects.'))
+          fail(new Error('Too many redirects.'))
           return
         }
         // Security: невалидный Location не должен ронять response-callback необработанным
@@ -63,18 +156,17 @@ export async function downloadFile(
         try {
           nextUrl = new URL(res.headers.location, parsed).toString()
         } catch {
-          reject(new Error('Invalid redirect location.'))
+          fail(new Error('Invalid redirect location.'))
           return
         }
         // Каждый hop заново проходит protocol-проверку, SSRF-preflight и safe lookup внутри
         // рекурсивного вызова: HTTPS→HTTP downgrade и заблокированный хост отклоняются там же.
-        // Общий redirect budget не сбрасывается — передаётся уменьшенным.
-        downloadFile(nextUrl, dest, onProgress, rateBytesPerSec, redirectsLeft - 1, maxBytes).then(resolve).catch(reject)
+        delegateRedirect(nextUrl)
         return
       }
       if (res.statusCode !== 200) {
         res.resume() // release non-2xx response socket before rejecting
-        reject(new Error(`HTTP ${res.statusCode}`))
+        fail(new Error(`HTTP ${res.statusCode}`))
         return
       }
 
@@ -86,15 +178,26 @@ export async function downloadFile(
       // Заявленный размер выше потолка отклоняем ДО открытия файла и записи.
       if (hasDeclared && declared > maxBytes) {
         res.resume() // release oversized response socket before rejecting
-        reject(new Error('Download exceeds maximum size.'))
+        fail(new Error('Download exceeds maximum size.'))
         return
       }
       const total = hasDeclared ? declared : 0
       let downloaded = 0
-      const file = createWriteStream(dest)
-      file.on('finish', () => file.close(() => resolve()))
-      file.on('error', reject)
-      res.on('error', reject)
+
+      file = createWriteStream(partPath)
+      file.on('error', (e: Error) => fail(e))
+      res.on('error', (e: Error) => fail(e))
+      file.on('finish', () =>
+        file!.close(() => {
+          if (settled) return
+          // Тело короче заявленного Content-Length — обрыв: не выдаём частичный файл за успех.
+          if (hasDeclared && downloaded < declared) {
+            fail(new Error('Truncated download.'))
+            return
+          }
+          succeed()
+        })
+      )
 
       // Прогресс всегда конечный и в диапазоне 0–100 (тело больше заявленного не даёт >100).
       const reportProgress = (): void => {
@@ -102,26 +205,25 @@ export async function downloadFile(
       }
       // Security: фактические байты (в любой ветке) не должны превысить потолок, даже если
       // сервер соврал в Content-Length или прислал больше. При превышении рвём соединение.
-      let tooLarge = false
       const enforceLimit = (): boolean => {
         if (downloaded <= maxBytes) return false
-        tooLarge = true
-        res.destroy()
-        req.destroy()
-        reject(new Error('Download exceeds maximum size.'))
+        fail(new Error('Download exceeds maximum size.'))
         return true
       }
+
+      armIdle()
 
       if (rateBytesPerSec > 0) {
         // Token-bucket throttling for free downloads.
         let allowance = rateBytesPerSec
         let last = Date.now()
         res.on('data', (chunk: Buffer) => {
-          if (tooLarge) return
+          if (settled) return
+          armIdle() // плановая rate-пауза (< 1 с) много меньше idle-таймаута, ложно его не тронет
           downloaded += chunk.length
           if (enforceLimit()) return
           reportProgress()
-          const canWrite = file.write(chunk)
+          const canWrite = file!.write(chunk)
           const now = Date.now()
           allowance = Math.min(rateBytesPerSec, allowance + ((now - last) / 1000) * rateBytesPerSec)
           last = now
@@ -129,16 +231,17 @@ export async function downloadFile(
           if (!canWrite || allowance < 0) {
             res.pause()
             const waitMs = allowance < 0 ? Math.max(0, (-allowance / rateBytesPerSec) * 1000) : 0
-            const resume = () => setTimeout(() => { if (!res.destroyed) res.resume() }, waitMs)
+            const resume = () => setTimeout(() => { if (!settled && !res.destroyed) res.resume() }, waitMs)
             // Security: honor disk backpressure so a slow filesystem cannot grow unbounded buffers in main.
             if (canWrite) resume()
-            else file.once('drain', resume)
+            else file!.once('drain', resume)
           }
         })
-        res.on('end', () => file.end())
+        res.on('end', () => { if (!settled) file!.end() })
       } else {
         res.on('data', (chunk: Buffer) => {
-          if (tooLarge) return
+          if (settled) return
+          armIdle()
           downloaded += chunk.length
           if (enforceLimit()) return
           reportProgress()
@@ -146,7 +249,6 @@ export async function downloadFile(
         res.pipe(file)
       }
     })
-    req.on('error', reject)
-    req.setTimeout(30_000, () => { req.destroy(); reject(new Error('Timeout')) })
+    req.on('error', (e: Error) => fail(e))
   })
 }

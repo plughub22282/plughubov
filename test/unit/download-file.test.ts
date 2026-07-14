@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'events'
-import { downloadFile, MAX_DOWNLOAD_BYTES } from '../../src/main/download-file'
+import {
+  downloadFile,
+  MAX_DOWNLOAD_BYTES,
+  CONNECT_TIMEOUT_MS,
+  IDLE_TIMEOUT_MS,
+  TOTAL_TIMEOUT_MS
+} from '../../src/main/download-file'
 
 // Characterization-тесты текущего transport-слоя (downloadFile).
 // Поведение НЕ проектируется — фиксируется как есть на момент механического выноса,
@@ -16,13 +22,6 @@ import { downloadFile, MAX_DOWNLOAD_BYTES } from '../../src/main/download-file'
 
 class FakeRequest extends EventEmitter {
   destroyed = false
-  timeoutMs: number | undefined
-  timeoutCb: (() => void) | undefined
-  setTimeout(ms: number, cb: () => void): this {
-    this.timeoutMs = ms
-    this.timeoutCb = cb
-    return this
-  }
   destroy(): void {
     this.destroyed = true
   }
@@ -61,6 +60,7 @@ class FakeWriteStream extends EventEmitter {
   dest = ''
   closed = false
   ended = false
+  destroyed = false
   writeReturn = true
   written: Buffer[] = []
   write(chunk: Buffer): boolean {
@@ -75,6 +75,9 @@ class FakeWriteStream extends EventEmitter {
     this.closed = true
     if (cb) cb()
   }
+  destroy(): void {
+    this.destroyed = true
+  }
 }
 
 // ─── Мокируемые specifier'ы (hoisted, т.к. vi.mock поднимается наверх) ─────────
@@ -83,6 +86,8 @@ const mocks = vi.hoisted(() => ({
   httpsGet: vi.fn(),
   httpGet: vi.fn(),
   createWriteStream: vi.fn(),
+  rename: vi.fn(),
+  unlink: vi.fn(),
   resolveAllowedDownloadAddresses: vi.fn(),
   // Sentinel: транспорт должен передать ровно эту ссылку в options.lookup.
   safeDownloadLookup: function safeDownloadLookupSentinel(): void {}
@@ -94,7 +99,11 @@ vi.mock('http', () => ({
   get: mocks.httpGet,
   IncomingMessage: class {}
 }))
-vi.mock('fs', () => ({ createWriteStream: mocks.createWriteStream }))
+vi.mock('fs', () => ({
+  createWriteStream: mocks.createWriteStream,
+  rename: mocks.rename,
+  unlink: mocks.unlink
+}))
 vi.mock('../../src/main/download-safety', () => ({
   resolveAllowedDownloadAddresses: mocks.resolveAllowedDownloadAddresses,
   safeDownloadLookup: mocks.safeDownloadLookup
@@ -134,6 +143,11 @@ function installGet(protocol: 'http' | 'https', mockFn: ReturnType<typeof vi.fn>
 }
 
 beforeEach(() => {
+  // Фейкуем только таймеры и Date: setImmediate (flushAll) и микротаски (SSRF await)
+  // остаются реальными, а connect/idle/total-таймауты становятся детерминированными
+  // и гарантированно очищаются в afterEach (никаких висящих 30-минутных таймеров).
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+
   responseQueue = []
   calls = []
   files = []
@@ -141,6 +155,8 @@ beforeEach(() => {
   mocks.httpsGet.mockReset()
   mocks.httpGet.mockReset()
   mocks.createWriteStream.mockReset()
+  mocks.rename.mockReset()
+  mocks.unlink.mockReset()
   mocks.resolveAllowedDownloadAddresses.mockReset()
 
   installGet('https', mocks.httpsGet)
@@ -151,11 +167,16 @@ beforeEach(() => {
     files.push(file)
     return file
   })
+  // fs.rename / fs.unlink — async с callback: по умолчанию успех (err = null).
+  mocks.rename.mockImplementation((_from: string, _to: string, cb: (e: Error | null) => void) => cb(null))
+  mocks.unlink.mockImplementation((_path: string, cb: (e: Error | null) => void) => cb(null))
   // По умолчанию SSRF-preflight пропускает (одна публичная запись).
   mocks.resolveAllowedDownloadAddresses.mockResolvedValue([{ address: '1.2.3.4', family: 4 }])
 })
 
 afterEach(() => {
+  vi.clearAllTimers() // никаких висящих таймеров между тестами
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
@@ -242,7 +263,7 @@ describe('downloadFile — успешный ответ и запись', () => {
     responseQueue.push(new FakeResponse(200, {}))
     const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
     await flushAll()
-    expect(mocks.createWriteStream).toHaveBeenCalledWith('/dest/a.zip')
+    expect(mocks.createWriteStream).toHaveBeenCalledWith('/dest/a.zip.part') // пишем во временный .part
     files[0].emit('finish')
     await p
   })
@@ -273,13 +294,27 @@ describe('downloadFile — успешный ответ и запись', () => {
     await p
   })
 
-  it('успешный finish → close → резолвит Promise', async () => {
+  it('успешный finish → close → atomic rename .part → dest → резолвит', async () => {
     responseQueue.push(new FakeResponse(200, {}))
     const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
     await flushAll()
     files[0].emit('finish')
     await expect(p).resolves.toBeUndefined()
     expect(files[0].closed).toBe(true)
+    expect(mocks.rename).toHaveBeenCalledWith('/dest/a.zip.part', '/dest/a.zip', expect.any(Function))
+    expect(mocks.unlink).not.toHaveBeenCalled() // успех — partial не удаляется
+  })
+
+  it('сбой rename удаляет .part и отклоняет', async () => {
+    responseQueue.push(new FakeResponse(200, {}))
+    mocks.rename.mockImplementationOnce((_f: string, _t: string, cb: (e: Error | null) => void) =>
+      cb(new Error('EXDEV'))
+    )
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await flushAll()
+    files[0].emit('finish')
+    await expect(p).rejects.toThrow('EXDEV')
+    expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
   })
 })
 
@@ -364,6 +399,7 @@ describe('downloadFile — лимит размера', () => {
     const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 0, 5, 10)
     await flushAll()
     expect(mocks.createWriteStream).toHaveBeenCalledTimes(1)
+    calls[0].res.emit('data', Buffer.from('0123456789')) // ровно 10 = заявленным
     files[0].emit('finish')
     await expect(p).resolves.toBeUndefined()
   })
@@ -510,38 +546,124 @@ describe('downloadFile — ошибки', () => {
     await expect(p).rejects.toThrow('HTTP 404')
   })
 
-  it('ошибка запроса отклоняет Promise', async () => {
+  it('ошибка запроса отклоняет Promise и удаляет .part', async () => {
     responseQueue.push(new FakeResponse(200, {}))
     const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
     await flushAll()
     calls[0].req.emit('error', new Error('socket reset'))
     await expect(p).rejects.toThrow('socket reset')
+    expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
   })
 
-  it('ошибка ответа отклоняет Promise', async () => {
+  it('ошибка ответа отклоняет Promise и удаляет .part', async () => {
     responseQueue.push(new FakeResponse(200, {}))
     const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
     await flushAll()
+    calls[0].res.emit('data', Buffer.from('partial'))
     calls[0].res.emit('error', new Error('response aborted'))
     await expect(p).rejects.toThrow('response aborted')
+    expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
+    expect(mocks.rename).not.toHaveBeenCalled()
   })
 
-  it('ошибка записи в файл отклоняет Promise', async () => {
+  it('ошибка записи в файл отклоняет Promise и удаляет .part', async () => {
     responseQueue.push(new FakeResponse(200, {}))
     const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
     await flushAll()
     files[0].emit('error', new Error('ENOSPC'))
     await expect(p).rejects.toThrow('ENOSPC')
+    expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
   })
 
-  it('idle-timeout уничтожает запрос и отклоняет как Timeout', async () => {
-    responseQueue.push(new FakeResponse(200, {}))
+  it('обрыв: тело короче заявленного Content-Length → Truncated download + удаление .part', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': '10' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 1000)
+    await flushAll()
+    const res = calls[0].res
+    res.emit('data', Buffer.from('123')) // только 3 из 10
+    res.emit('end') // file.end → finish → close: недобор
+    files[0].emit('finish')
+    await expect(p).rejects.toThrow('Truncated download.')
+    expect(mocks.rename).not.toHaveBeenCalled()
+    expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
+  })
+})
+
+// ─── Таймауты ─────────────────────────────────────────────────────────────────
+
+describe('downloadFile — таймауты', () => {
+  it('connect-timeout (нет ответа) → Timeout + destroy запроса + удаление .part', async () => {
+    // get не вызовет callback (сервер молчит) — переопределяем на «висящий» ответ.
+    mocks.httpsGet.mockImplementation((url: URL, options: { lookup?: unknown }) => {
+      const req = new FakeRequest()
+      calls.push({ protocol: 'https', url, options, req, res: new FakeResponse() })
+      return req // callback не вызывается
+    })
     const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
     await flushAll()
-    expect(calls[0].req.timeoutMs).toBe(30_000)
-    calls[0].req.timeoutCb?.()
+    vi.advanceTimersByTime(CONNECT_TIMEOUT_MS)
     await expect(p).rejects.toThrow('Timeout')
     expect(calls[0].req.destroyed).toBe(true)
+    expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
+  })
+
+  it('ответ, пришедший ПОСЛЕ дедлайна, лишь освобождает сокет (settled)', async () => {
+    // Придерживаем response-callback, чтобы вызвать его вручную уже после timeout.
+    let deferredCb: ((res: FakeResponse) => void) | undefined
+    const heldRes = new FakeResponse(200, { 'content-length': '10' })
+    mocks.httpsGet.mockImplementation(
+      (url: URL, options: { lookup?: unknown }, cb: (res: FakeResponse) => void) => {
+        const req = new FakeRequest()
+        calls.push({ protocol: 'https', url, options, req, res: heldRes })
+        deferredCb = cb
+        return req
+      }
+    )
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await flushAll()
+    vi.advanceTimersByTime(CONNECT_TIMEOUT_MS) // fail() до прихода ответа
+    await expect(p).rejects.toThrow('Timeout')
+    deferredCb?.(heldRes) // поздний ответ
+    expect(heldRes.resumeCalls).toBeGreaterThan(0) // сокет освобождён
+    expect(mocks.createWriteStream).not.toHaveBeenCalled() // запись не начата
+  })
+
+  it('idle-timeout (передача застопорилась) → Timeout', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': '100' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 1000)
+    await flushAll()
+    calls[0].res.emit('data', Buffer.from('12345')) // армирует idle-таймер
+    vi.advanceTimersByTime(IDLE_TIMEOUT_MS)
+    await expect(p).rejects.toThrow('Timeout')
+    expect(calls[0].res.destroyed).toBe(true)
+  })
+
+  it('активная передача сбрасывает idle-таймер (не ложное срабатывание)', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': '30' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 1000)
+    await flushAll()
+    const res = calls[0].res
+    // Три чанка по 10 (итого 30 = заявленным) с интервалом чуть меньше idle-таймаута —
+    // таймер каждый раз перезаводится и ложно не срабатывает.
+    for (let i = 0; i < 3; i++) {
+      res.emit('data', Buffer.from('1234567890'))
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 1)
+    }
+    res.emit('end')
+    files[0].emit('finish')
+    await expect(p).resolves.toBeUndefined()
+  })
+
+  it('общий дедлайн покрывает цепочку редиректов и не сбрасывается на hop-е', async () => {
+    responseQueue.push(new FakeResponse(302, { location: 'https://cdn.example.com/final.zip' }))
+    responseQueue.push(new FakeResponse(200, { 'content-length': '100' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 1000)
+    await flushAll() // первый hop делегирует второму
+    // Второй hop открыт; двигаем время к общему дедлайну (30 мин), не трогая idle.
+    calls[1].res.emit('data', Buffer.from('123'))
+    vi.advanceTimersByTime(TOTAL_TIMEOUT_MS)
+    await expect(p).rejects.toThrow('Timeout')
+    expect(calls[1].res.destroyed).toBe(true)
   })
 })
 
@@ -549,9 +671,9 @@ describe('downloadFile — ошибки', () => {
 
 describe('downloadFile — единичное завершение', () => {
   it('после reject по timeout последующие события не меняют исход (settle один раз)', async () => {
-    responseQueue.push(new FakeResponse(200, {}))
+    responseQueue.push(new FakeResponse(200, { 'content-length': '100' }))
     let settles = 0
-    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn()).then(
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 1000).then(
       () => {
         settles++
       },
@@ -560,21 +682,37 @@ describe('downloadFile — единичное завершение', () => {
       }
     )
     await flushAll()
-    calls[0].req.timeoutCb?.()
+    calls[0].res.emit('data', Buffer.from('12345')) // армирует idle-таймер и создаёт .part
+    vi.advanceTimersByTime(IDLE_TIMEOUT_MS) // idle-timeout → fail один раз
     await p
-    // Поздние события уже settled-Promise игнорируются исполнением.
+    // Поздние события по уже settled-Promise игнорируются исполнением.
     calls[0].res.emit('error', new Error('late'))
     files[0].emit('finish')
     await flushAll()
     expect(settles).toBe(1)
+    expect(mocks.rename).not.toHaveBeenCalled() // после timeout успеха быть не может
+  })
+
+  it('data-события после settle не пишут в файл', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': '100' }))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 1000)
+    await flushAll()
+    const res = calls[0].res
+    const file = files[0]
+    res.emit('data', Buffer.from('12345'))
+    const writtenBefore = file.written.length
+    vi.advanceTimersByTime(IDLE_TIMEOUT_MS) // settle через idle-timeout
+    await expect(p).rejects.toThrow('Timeout')
+    res.emit('data', Buffer.from('late-bytes')) // поздний чанк
+    expect(file.written.length).toBe(writtenBefore) // ничего не дописано
   })
 })
 
 // ─── Backpressure (характеризация, без таймеров) ──────────────────────────────
 
 describe('downloadFile — backpressure', () => {
-  it('при переполнении буфера файла res.pause() и ожидание drain', async () => {
-    responseQueue.push(new FakeResponse(200, { 'content-length': '100' }))
+  it('при переполнении буфера файла res.pause() и ожидание drain, затем resume', async () => {
+    responseQueue.push(new FakeResponse(200, { 'content-length': '10' }))
     const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn(), 1000)
     await flushAll()
     const res = calls[0].res
@@ -584,16 +722,13 @@ describe('downloadFile — backpressure', () => {
     res.emit('data', Buffer.from('x'.repeat(10)))
     expect(res.pauseCalls).toBeGreaterThan(0)
     expect(file.listenerCount('drain')).toBe(drainBefore + 1)
-    // Осознанно не эмитим 'drain' (это запланировало бы setTimeout-resume);
-    // ветку возобновления по времени характеризует Этап 4.
-    void p
+    // drain → запланированный resume (setTimeout) → возобновление чтения.
+    file.writeReturn = true
+    file.emit('drain')
+    vi.advanceTimersByTime(1000)
+    expect(res.resumeCalls).toBeGreaterThan(0)
+    res.emit('end')
+    file.emit('finish')
+    await expect(p).resolves.toBeUndefined()
   })
-})
-
-// ─── Будущие security-требования (НЕ закрепляем текущее небезопасное поведение) ─
-
-describe('downloadFile — будущие security-инварианты (Этап 4)', () => {
-  it.todo('partial-файл должен удаляться при любой ошибке')
-  it.todo('общий timeout должен покрывать цепочку редиректов')
-  it.todo('stream не должен писать после reject')
 })
