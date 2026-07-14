@@ -99,6 +99,46 @@ describe('resolveAllowedDownloadAddresses — literal IPv6', () => {
   })
 })
 
+describe('resolveAllowedDownloadAddresses — границы критических подсетей', () => {
+  // Границы вычислены вручную из CIDR-масок (НЕ через production-алгоритм):
+  //   100.64.0.0/10  → 100.64.0.0  .. 100.127.255.255
+  //   172.16.0.0/12  → 172.16.0.0  .. 172.31.255.255
+  //   169.254.0.0/16 → 169.254.0.0 .. 169.254.255.255
+  //   fc00::/7       → fc00::      .. fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+  // before/after проверены на непопадание в остальные BlockList-правила.
+
+  // first/last адреса диапазона — блокируются единым публичным сообщением, без DNS.
+  it.each([
+    { range: '100.64.0.0/10', position: 'first', address: '100.64.0.0' },
+    { range: '100.64.0.0/10', position: 'last', address: '100.127.255.255' },
+    { range: '172.16.0.0/12', position: 'first', address: '172.16.0.0' },
+    { range: '172.16.0.0/12', position: 'last', address: '172.31.255.255' },
+    { range: '169.254.0.0/16', position: 'first', address: '169.254.0.0' },
+    { range: '169.254.0.0/16', position: 'last', address: '169.254.255.255' },
+    { range: 'fc00::/7', position: 'first', address: 'fc00::' },
+    { range: 'fc00::/7', position: 'last', address: 'fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff' }
+  ])('блокирует $position адрес $address диапазона $range без DNS', async ({ address }) => {
+    await expect(resolveAllowedDownloadAddresses(address)).rejects.toThrow(BLOCK_MESSAGE)
+    expect(mockedLookup).not.toHaveBeenCalled()
+  })
+
+  // before/after диапазона — публичные адреса, разрешаются как literal (без DNS).
+  it.each([
+    { range: '100.64.0.0/10', position: 'before', address: '100.63.255.255', family: 4 },
+    { range: '100.64.0.0/10', position: 'after', address: '100.128.0.0', family: 4 },
+    { range: '172.16.0.0/12', position: 'before', address: '172.15.255.255', family: 4 },
+    { range: '172.16.0.0/12', position: 'after', address: '172.32.0.0', family: 4 },
+    { range: '169.254.0.0/16', position: 'before', address: '169.253.255.255', family: 4 },
+    { range: '169.254.0.0/16', position: 'after', address: '169.255.0.0', family: 4 },
+    { range: 'fc00::/7', position: 'before', address: 'fbff:ffff:ffff:ffff:ffff:ffff:ffff:ffff', family: 6 },
+    { range: 'fc00::/7', position: 'after', address: 'fe00::', family: 6 }
+  ])('разрешает $position адрес $address диапазона $range (family $family, без DNS)', async ({ address, family }) => {
+    const out = await resolveAllowedDownloadAddresses(address)
+    expect(out).toEqual([rec(address, family)])
+    expect(mockedLookup).not.toHaveBeenCalled()
+  })
+})
+
 describe('resolveAllowedDownloadAddresses — hostname + нормализация', () => {
   it('localhost блокируется ДО DNS', async () => {
     await expect(resolveAllowedDownloadAddresses('localhost')).rejects.toThrow(BLOCK_MESSAGE)
