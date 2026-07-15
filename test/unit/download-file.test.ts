@@ -62,6 +62,10 @@ class FakeWriteStream extends EventEmitter {
   destroyed = false
   writeReturn = true
   written: Buffer[] = []
+  // Реальный fs-поток эмитит 'close' асинхронно уже ПОСЛЕ destroy() — только тогда
+  // дескриптор фактически освобождён. Моделируем это, чтобы воспроизвести гонку
+  // close/unlink. Тесты, которым нужен ручной контроль тайминга, ставят false.
+  autoCloseOnDestroy = true
   write(chunk: Buffer): boolean {
     this.written.push(chunk)
     return this.writeReturn
@@ -71,11 +75,20 @@ class FakeWriteStream extends EventEmitter {
     this.emit('finish')
   }
   close(cb?: () => void): void {
-    this.closed = true
+    this.emitClose()
     if (cb) cb()
   }
   destroy(): void {
+    if (this.destroyed) return
     this.destroyed = true
+    // 'close' НЕ синхронно: планируем на setImmediate (реальный, таймеры фейковые).
+    if (this.autoCloseOnDestroy) setImmediate(() => this.emitClose())
+  }
+  // Однократная эмиссия 'close' + выставление флага closed (идемпотентно).
+  emitClose(): void {
+    if (this.closed) return
+    this.closed = true
+    this.emit('close')
   }
 }
 
@@ -255,6 +268,64 @@ describe('downloadFile — SSRF preflight', () => {
   })
 })
 
+// ─── DNS preflight внутри общего дедлайна ─────────────────────────────────────
+
+describe('downloadFile — preflight в общем дедлайне', () => {
+  it('зависший preflight приводит к общему Timeout и НЕ открывает запрос', async () => {
+    // Promise, который никогда не резолвится — эмулируем зависший DNS.
+    mocks.resolveAllowedDownloadAddresses.mockReturnValueOnce(new Promise<never>(() => {}))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    const settled = vi.fn()
+    p.then(settled, settled)
+    await flushAll()
+    expect(settled).not.toHaveBeenCalled() // ещё висим на preflight
+    vi.advanceTimersByTime(TOTAL_TIMEOUT_MS) // выбираем весь дедлайн
+    await expect(p).rejects.toThrow('Timeout')
+    expect(mocks.httpsGet).not.toHaveBeenCalled() // сокет не открыт после timeout preflight
+  })
+
+  it('позднее завершение зависшего preflight ничего не запускает (нет запроса/unhandled)', async () => {
+    let resolveLate: ((v: Array<{ address: string; family: number }>) => void) | undefined
+    mocks.resolveAllowedDownloadAddresses.mockReturnValueOnce(
+      new Promise((res) => {
+        resolveLate = res
+      })
+    )
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await flushAll()
+    vi.advanceTimersByTime(TOTAL_TIMEOUT_MS)
+    await expect(p).rejects.toThrow('Timeout')
+    // Поздний resolve DNS уже после проигранной гонки: не должен открыть запрос.
+    resolveLate?.([{ address: '1.2.3.4', family: 4 }])
+    await flushAll()
+    expect(mocks.httpsGet).not.toHaveBeenCalled()
+  })
+
+  it('дедлайн не сбрасывается на редиректе: preflight второго hop-а ограничен остатком', async () => {
+    // Первый hop: мгновенный preflight + 302. Второй hop: preflight зависает.
+    responseQueue.push(new FakeResponse(302, { location: 'https://cdn.example.com/final.zip' }))
+    mocks.resolveAllowedDownloadAddresses
+      .mockResolvedValueOnce([{ address: '1.2.3.4', family: 4 }]) // первый hop ок
+      .mockReturnValueOnce(new Promise<never>(() => {})) // второй hop висит
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await flushAll() // первый hop делегировал второму, тот висит на preflight
+    expect(calls.length).toBe(1) // второй сокет ещё не открыт
+    // Общий дедлайн один на всю цепочку: добиваем остаток — и второй hop падает в Timeout.
+    vi.advanceTimersByTime(TOTAL_TIMEOUT_MS)
+    await expect(p).rejects.toThrow('Timeout')
+    expect(calls.length).toBe(1) // второй запрос так и не открылся
+  })
+
+  it('preflight укладывается в дедлайн → запрос открывается штатно', async () => {
+    responseQueue.push(new FakeResponse(200, {}))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await flushAll()
+    expect(mocks.httpsGet).toHaveBeenCalledTimes(1) // preflight успел — сокет открыт
+    files[files.length - 1].emit('finish')
+    await expect(p).resolves.toBeUndefined()
+  })
+})
+
 // ─── Финальный 200 и запись ───────────────────────────────────────────────────
 
 describe('downloadFile — успешный ответ и запись', () => {
@@ -314,6 +385,36 @@ describe('downloadFile — успешный ответ и запись', () => {
     files[0].emit('finish')
     await expect(p).rejects.toThrow('EXDEV')
     expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
+  })
+
+  it('rename EPERM/EACCES удаляет .part и отклоняет исходной ошибкой', async () => {
+    for (const code of ['EPERM', 'EACCES']) {
+      mocks.rename.mockReset()
+      mocks.unlink.mockReset()
+      mocks.rename.mockImplementation((_f: string, _t: string, cb: (e: NodeJS.ErrnoException | null) => void) => {
+        const err = new Error(code) as NodeJS.ErrnoException
+        err.code = code
+        cb(err)
+      })
+      mocks.unlink.mockImplementation((_p: string, cb: (e: Error | null) => void) => cb(null))
+      responseQueue.push(new FakeResponse(200, {}))
+      const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+      await flushAll()
+      files[files.length - 1].emit('finish')
+      await expect(p).rejects.toThrow(code)
+      expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
+    }
+  })
+
+  it('rename вызывается ровно .part → dest (замена целевого файла делегируется fs.rename)', async () => {
+    responseQueue.push(new FakeResponse(200, {}))
+    const p = downloadFile('https://example.com/existing.zip', '/dest/existing.zip', vi.fn())
+    await flushAll()
+    files[0].emit('finish')
+    await expect(p).resolves.toBeUndefined()
+    // Транспорт всегда пишет в .part и одним rename замещает dest; отдельного unlink dest нет.
+    expect(mocks.rename).toHaveBeenCalledWith('/dest/existing.zip.part', '/dest/existing.zip', expect.any(Function))
+    expect(mocks.unlink).not.toHaveBeenCalled() // при успехе исходный dest не трогаем вручную
   })
 })
 
@@ -584,6 +685,110 @@ describe('downloadFile — ошибки', () => {
     files[0].emit('finish')
     await expect(p).rejects.toThrow('Truncated download.')
     expect(mocks.rename).not.toHaveBeenCalled()
+    expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
+  })
+})
+
+// ─── Cleanup: гонка close/unlink ──────────────────────────────────────────────
+
+describe('downloadFile — cleanup (close/unlink)', () => {
+  // Общий сетап: доходим до открытого файлового потока, затем роняем поток file.error.
+  const openThenFail = async (): Promise<{ file: FakeWriteStream; p: Promise<void> }> => {
+    responseQueue.push(new FakeResponse(200, {}))
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await flushAll()
+    return { file: files[files.length - 1], p }
+  }
+
+  it('destroy файла не закрывает дескриптор синхронно (close асинхронный)', async () => {
+    const { file, p } = await openThenFail()
+    file.autoCloseOnDestroy = false // управляем close вручную
+    calls[0].req.emit('error', new Error('boom'))
+    // Сразу после fail(): поток уничтожен, но close ещё не эмитнут, поэтому unlink НЕ вызван.
+    expect(file.destroyed).toBe(true)
+    expect(file.closed).toBe(false)
+    expect(mocks.unlink).not.toHaveBeenCalled()
+    file.emitClose() // фактическое закрытие дескриптора
+    await expect(p).rejects.toThrow('boom')
+  })
+
+  it('unlink не вызывается до close, и вызывается ровно после него', async () => {
+    const { file, p } = await openThenFail()
+    file.autoCloseOnDestroy = false
+    calls[0].req.emit('error', new Error('boom'))
+    expect(mocks.unlink).not.toHaveBeenCalled() // до close — нет
+    file.emitClose()
+    await expect(p).rejects.toThrow('boom')
+    expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function)) // после close — да
+    expect(mocks.unlink).toHaveBeenCalledTimes(1)
+  })
+
+  it('ENOENT (.part отсутствует) считается успешной очисткой (без шума в stderr)', async () => {
+    mocks.unlink.mockImplementation((_path: string, cb: (e: NodeJS.ErrnoException | null) => void) => {
+      const err = new Error('missing') as NodeJS.ErrnoException
+      err.code = 'ENOENT'
+      cb(err)
+    })
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { file, p } = await openThenFail()
+    file.emit('error', new Error('ENOSPC'))
+    await expect(p).rejects.toThrow('ENOSPC')
+    expect(spy).not.toHaveBeenCalled() // ENOENT — штатная очистка, не логируется
+  })
+
+  it('EPERM/EACCES на unlink не оставляет Promise зависшим и логируется', async () => {
+    for (const code of ['EPERM', 'EACCES']) {
+      mocks.unlink.mockReset()
+      mocks.unlink.mockImplementation((_path: string, cb: (e: NodeJS.ErrnoException | null) => void) => {
+        const err = new Error(code) as NodeJS.ErrnoException
+        err.code = code
+        cb(err)
+      })
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const { file, p } = await openThenFail()
+      file.emit('error', new Error('disk gone'))
+      // reject приходит исходной причиной, а не ошибкой unlink — Promise завершён.
+      await expect(p).rejects.toThrow('disk gone')
+      expect(spy).toHaveBeenCalled() // неожиданная ошибка cleanup диагностически логируется
+      spy.mockRestore()
+    }
+  })
+
+  it('поздние close/error после reject не завершают Promise повторно', async () => {
+    let settles = 0
+    responseQueue.push(new FakeResponse(200, {}))
+    const done = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn()).then(
+      () => settles++,
+      () => settles++
+    )
+    await flushAll()
+    const file = files[0]
+    calls[0].req.emit('error', new Error('boom'))
+    await flushAll() // close → unlink → reject
+    // Поздние повторные события по уже settled-состоянию ничего не запускают.
+    file.emit('close')
+    file.emit('error', new Error('late'))
+    calls[0].res.emit('error', new Error('late-res'))
+    await flushAll()
+    await done
+    expect(settles).toBe(1)
+    expect(mocks.unlink).toHaveBeenCalledTimes(1) // очистка ровно одна
+  })
+
+  it('поток не создан (fail до createWriteStream): .part удаляется без ожидания close', async () => {
+    responseQueue.push(new FakeResponse(500, {})) // не-200 → fail до открытия файла
+    const p = downloadFile('https://example.com/a.zip', '/dest/a.zip', vi.fn())
+    await expect(p).rejects.toThrow('HTTP 500')
+    expect(mocks.createWriteStream).not.toHaveBeenCalled()
+    expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
+  })
+
+  it('поток уже закрыт к моменту fail: unlink без повторного destroy/ожидания', async () => {
+    const { file, p } = await openThenFail()
+    file.emitClose() // дескриптор уже закрыт
+    file.destroyed = false // проверяем, что fail не станет ждать несуществующий close
+    calls[0].req.emit('error', new Error('boom'))
+    await expect(p).rejects.toThrow('boom')
     expect(mocks.unlink).toHaveBeenCalledWith('/dest/a.zip.part', expect.any(Function))
   })
 })

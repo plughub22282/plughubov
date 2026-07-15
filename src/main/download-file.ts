@@ -21,6 +21,32 @@ export const IDLE_TIMEOUT_MS = 60_000
 export const TOTAL_TIMEOUT_MS = 30 * 60 * 1000
 
 /**
+ * Выполняет SSRF/DNS-rebinding preflight, ограничивая его оставшимся временем общего
+ * дедлайна. По истечении — отклоняет 'Timeout' и НЕ открывает сокет (вызов происходит
+ * до https.get). Позднее завершение исходного DNS-Promise (resolve или reject)
+ * проглатывается: оно не должно ни породить unhandledRejection, ни запустить запрос
+ * задним числом. Таймер preflight гасится в любом случае (finally).
+ */
+async function preflightWithinDeadline(hostname: string, totalDeadline: number): Promise<void> {
+  const remaining = totalDeadline - Date.now()
+  if (remaining <= 0) throw new Error('Timeout')
+  const preflight = resolveAllowedDownloadAddresses(hostname)
+  // Late rejection после победы таймаута не должна всплыть как unhandledRejection.
+  preflight.catch(() => {})
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      preflight.then(() => undefined),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Timeout')), remaining)
+      })
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+/**
  * HTTPS-транспорт скачивания файла на диск с прогрессом и клиентским throttling.
  * Пишет во временный `${dest}.part` и атомарно переименовывает в dest только после
  * полного успешного закрытия; при любой ошибке .part удаляется. SSRF/DNS-rebinding
@@ -57,17 +83,26 @@ export async function downloadFile(
     throw new Error('Unsupported URL protocol')
   }
 
-  // Security: verify every resolved address here and again in the socket lookup to stop DNS rebinding.
-  await resolveAllowedDownloadAddresses(parsed.hostname)
-
-  // Общий дедлайн устанавливается один раз и сохраняется на всех редирект-hop-ах.
+  // Общий дедлайн вычисляется в самом начале верхнего вызова (ДО DNS preflight) и
+  // сохраняется неизменным на всех редирект-hop-ах, поэтому и preflight, и передача,
+  // и вся цепочка редиректов укладываются в один абсолютный дедлайн.
   const totalDeadline = deadline ?? Date.now() + TOTAL_TIMEOUT_MS
+
+  // Security: verify every resolved address here and again in the socket lookup to stop
+  // DNS rebinding. Preflight ограничен остатком общего дедлайна: если он исчерпан —
+  // бросаем Timeout и НЕ открываем HTTPS-соединение.
+  await preflightWithinDeadline(parsed.hostname, totalDeadline)
 
   return new Promise<void>((resolve, reject) => {
     const partPath = `${dest}.part`
     let settled = false
     let file: ReturnType<typeof createWriteStream> | undefined
     let response: IncomingMessage | undefined
+    // NB: должно быть `let`, а не `const`. https.get() может вызвать свой response-callback
+    // синхронно (внутри самого вызова, до присваивания req), а этот callback через fail()
+    // читает req. С `const` это TDZ-ошибка «Cannot access 'req' before initialization»;
+    // с `let` переменная в hoisted-области доступна как undefined. prefer-const тут ошибочен.
+    // eslint-disable-next-line prefer-const
     let req: ReturnType<typeof https.get> | undefined
     let connectTimer: ReturnType<typeof setTimeout> | undefined
     let idleTimer: ReturnType<typeof setTimeout> | undefined
@@ -87,11 +122,36 @@ export async function downloadFile(
       if (settled) return
       settled = true
       clearTimers()
+      // Сначала останавливаем сеть: рвём запрос и ответ (это сокеты, не fd на диске).
       req?.destroy()
       response?.destroy()
-      file?.destroy()
-      // Downloader владеет partial-файлом: удаляем best-effort, reject в любом случае.
-      unlink(partPath, () => reject(err))
+
+      // Downloader владеет partial-файлом, но удалять .part можно ТОЛЬКО после
+      // фактического закрытия файлового дескриптора: иначе (особенно на Windows)
+      // unlink гонится с ещё открытым хендлом. reject вызывается ровно один раз
+      // в любом исходе unlink, чтобы Promise не завис.
+      const removePart = (): void => {
+        unlink(partPath, (unlinkErr: NodeJS.ErrnoException | null) => {
+          // ENOENT (.part не существует) — штатная успешная очистка, молчим.
+          // Любую другую ошибку логируем диагностически, но всё равно reject
+          // исходной причиной — cleanup-сбой не должен её маскировать.
+          if (unlinkErr && unlinkErr.code !== 'ENOENT') {
+            console.error(`downloadFile: не удалось удалить ${partPath} при очистке:`, unlinkErr)
+          }
+          reject(err)
+        })
+      }
+
+      const stream = file
+      if (!stream || stream.closed) {
+        // Поток не создан, либо дескриптор уже закрыт — удалять .part можно сразу.
+        removePart()
+        return
+      }
+      // Дожидаемся реального 'close' (release fd), только потом удаляем. destroy()
+      // вызываем один раз; если поток уже уничтожается, 'close' всё равно придёт.
+      stream.once('close', removePart)
+      if (!stream.destroyed) stream.destroy()
     }
 
     // Единое идемпотентное успешное завершение: атомарный rename .part → dest.
