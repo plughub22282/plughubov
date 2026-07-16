@@ -18,16 +18,12 @@ import {
   readdirSync,
   lstatSync,
   statSync,
-  openSync,
-  readSync,
-  closeSync,
   rmSync,
   openAsBlob
 } from 'fs'
 import { platform, homedir, tmpdir } from 'os'
 import { pathToFileURL } from 'url'
 import extractZip from 'extract-zip'
-import yauzl from 'yauzl'
 import { supabase } from './supabase'
 import type { DbPlugin, DbCommunityPlugin } from './supabase'
 import { registerAuthIpc, getState } from './auth'
@@ -52,6 +48,17 @@ import {
 import { toSafeError } from './errors'
 import { downloadRateFor } from './download-safety'
 import { downloadFile } from './download-file'
+import {
+  MAX_EXTRACTED_FILES,
+  MAX_SINGLE_FILE_BYTES,
+  MAX_TOTAL_UNCOMPRESSED_BYTES,
+  extFromPath,
+  readMagicBytes,
+  isZipMagic,
+  isVst3ZipEntryMatch,
+  findZipEntry,
+  zipHasVst3
+} from './archive/zip-validation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -372,17 +379,12 @@ const VALIDATE_TIMEOUT_MSG = 'Проверка содержимого архив
 const AUDIO_FILE_EXTS = new Set(['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac'])
 const IMAGE_FILE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp'])
 const BEAT_PREVIEW_SECONDS = 30
-const ZIP_MAGIC_VALUES = new Set(['504b0304', '504b0506', '504b0708'])
 const RAR4_MAGIC = '526172211a0700'
 const RAR5_MAGIC = '526172211a070100'
 
 // ─── Защита от zip-бомб ─────────────────────────────────────────────────────────
-// Распаковываем архивы только в один уровень, но и здесь злонамеренный архив может
-// объявить гигантское содержимое. Лимитируем число файлов и суммарный распакованный
-// размер; превышение прерывает extract-zip (исключение из onEntry → reject).
-const MAX_EXTRACTED_FILES = 10_000
-const MAX_SINGLE_FILE_BYTES = 4 * 1024 * 1024 * 1024 // 4 GiB на файл
-const MAX_TOTAL_UNCOMPRESSED_BYTES = 4 * 1024 * 1024 * 1024 // 4 GiB суммарно
+// Лимиты и низкоуровневый анализ ZIP вынесены в ./archive/zip-validation.ts
+// (единый source of truth). makeZipExtractionGuard ниже импортирует оттуда MAX_*.
 
 interface ZipEntryLike {
   fileName: string
@@ -440,21 +442,6 @@ function contentTypeForExt(ext: string): string | undefined {
   return undefined
 }
 
-function extFromPath(value: string): string {
-  return (value.split(/[\\/]/).pop()?.split('.').pop() ?? '').toLowerCase()
-}
-
-function readMagicBytes(filePath: string, length = 12): Buffer {
-  const fd = openSync(filePath, 'r')
-  try {
-    const buffer = Buffer.alloc(length)
-    const bytesRead = readSync(fd, buffer, 0, length, 0)
-    return buffer.subarray(0, bytesRead)
-  } finally {
-    closeSync(fd)
-  }
-}
-
 function assertNonEmptyRegularFile(filePath: string): number {
   const st = statSync(filePath)
   if (!st.isFile()) {
@@ -464,10 +451,6 @@ function assertNonEmptyRegularFile(filePath: string): number {
     throw new Error('Нельзя загружать пустой файл.')
   }
   return st.size
-}
-
-function isZipMagic(buffer: Buffer): boolean {
-  return buffer.length >= 4 && ZIP_MAGIC_VALUES.has(buffer.subarray(0, 4).toString('hex'))
 }
 
 function isRarMagic(buffer: Buffer): boolean {
@@ -556,149 +539,6 @@ function isFxpMagic(buffer: Buffer): boolean {
   return buffer.length >= 4 && buffer.toString('ascii', 0, 4) === 'CcnK'
 }
 
-function isInsideVst3Bundle(relativePath: string): boolean {
-  return relativePath.split(/[\\/]/).some((part) => part.toLowerCase().endsWith('.vst3'))
-}
-
-interface ZipContentEntry {
-  relativePath: string
-  ext: string
-  size: number
-}
-
-// Сколько байт записи из архива буферизуем в памяти для проверки magic-байтов
-// (FLP/WAV/MP3/... заголовки укладываются в первые несколько КБ; 1 МиБ — щедрый запас
-// на случай больших служебных чанков перед данными, например LIST/INFO в WAV).
-const ZIP_CONTENT_PEEK_BYTES = 1024 * 1024
-
-/**
- * Ищет в ZIP запись, удовлетворяющую onEntry, читая только центральный каталог и,
- * при необходимости, содержимое конкретных кандидатов — БЕЗ распаковки архива на
- * диск. Раньше валидация загрузки (community:upload и т.п.) распаковывала весь
- * архив во временную папку через extract-zip только чтобы проверить наличие
- * .vst3/.flp/аудио — на архивах в десятки-сотни МБ с тысячами файлов это давало
- * заметную задержку и создавало тысячи временных файлов (лишняя нагрузка на
- * диск и на антивирус ОС, который их сканирует на лету). yauzl читает central
- * directory без записи файлов на диск и открывает поток отдельной записи только
- * если она нужна onEntry для проверки содержимого.
- */
-async function findZipEntry(
-  zipPath: string,
-  onEntry: (entry: ZipContentEntry, openContent: () => Promise<Buffer>) => Promise<boolean>
-): Promise<boolean> {
-  if (!isZipMagic(readMagicBytes(zipPath))) {
-    throw new Error('ZIP-архив повреждён или это файл другого типа.')
-  }
-
-  return new Promise<boolean>((resolvePromise, rejectPromise) => {
-    let fileCount = 0
-    let totalBytes = 0
-    let sawFile = false
-    let settled = false
-
-    const finish = (err: Error | null, ok = false): void => {
-      if (settled) return
-      settled = true
-      if (err) rejectPromise(err)
-      else resolvePromise(ok)
-    }
-
-    yauzl.open(zipPath, { lazyEntries: true, autoClose: true }, (openErr, zipfile) => {
-      if (openErr || !zipfile) {
-        finish(new Error('ZIP-архив повреждён или это файл другого типа.'))
-        return
-      }
-
-      zipfile.on('error', () => finish(new Error('ZIP-архив повреждён или это файл другого типа.')))
-
-      zipfile.on('end', () => {
-        finish(sawFile ? null : new Error('В архиве нет подходящих файлов для загрузки.'), false)
-      })
-
-      zipfile.on('entry', (entry) => {
-        if (settled) return
-        if (/\/$/.test(entry.fileName)) {
-          zipfile.readEntry()
-          return
-        }
-
-        fileCount += 1
-        if (fileCount > MAX_EXTRACTED_FILES) {
-          finish(new Error('В архиве слишком много файлов.'))
-          return
-        }
-        const size = Number(entry.uncompressedSize) || 0
-        if (size > MAX_SINGLE_FILE_BYTES) {
-          finish(new Error('Файл внутри архива слишком большой.'))
-          return
-        }
-        totalBytes += size
-        if (totalBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) {
-          finish(new Error('Содержимое архива превышает допустимый размер.'))
-          return
-        }
-        if (size > 0) sawFile = true
-
-        const info: ZipContentEntry = { relativePath: entry.fileName, ext: extFromPath(entry.fileName), size }
-        const openContent = (): Promise<Buffer> =>
-          new Promise<Buffer>((res, rej) => {
-            zipfile.openReadStream(entry, (streamErr, stream) => {
-              if (streamErr || !stream) {
-                rej(streamErr ?? new Error('Не удалось прочитать файл из архива.'))
-                return
-              }
-              const chunks: Buffer[] = []
-              let bytesRead = 0
-              let doneReading = false
-              const finishRead = (): void => {
-                if (doneReading) return
-                doneReading = true
-                res(Buffer.concat(chunks))
-              }
-              stream.on('data', (chunk: Buffer) => {
-                if (doneReading) return
-                bytesRead += chunk.length
-                chunks.push(chunk)
-                if (bytesRead >= ZIP_CONTENT_PEEK_BYTES) {
-                  // Достаточно байт для проверки magic-заголовка — резолвим СРАЗУ и
-                  // прекращаем чтение. Раньше здесь только вызывался stream.destroy()
-                  // и код ждал события 'end'/'close', чтобы резолвить промис. Но
-                  // destroy() у распакованного потока yauzl эти события не гарантирует
-                  // (в частности, при отсутствии обработчика они могут не прийти),
-                  // из-за чего openContent() зависал до внешнего withTimeout — это и
-                  // давало «Проверка содержимого архива не уложилась в отведённое время»
-                  // на архивах с крупным первым файлом (напр. .exe-инсталлятор ≥1 МиБ).
-                  finishRead()
-                  stream.destroy()
-                }
-              })
-              stream.on('end', finishRead)
-              stream.on('close', finishRead)
-              stream.on('error', (streamReadErr) => {
-                if (doneReading) return
-                doneReading = true
-                rej(streamReadErr)
-              })
-            })
-          })
-
-        Promise.resolve(onEntry(info, openContent))
-          .then((isMatch) => {
-            if (settled) return
-            if (isMatch) {
-              finish(null, true)
-            } else {
-              zipfile.readEntry()
-            }
-          })
-          .catch((entryErr: unknown) => finish(entryErr instanceof Error ? entryErr : new Error(String(entryErr))))
-      })
-
-      zipfile.readEntry()
-    })
-  })
-}
-
 function assertDirectUploadContent(kind: string, ext: string, filePath: string): void {
   const buffer = readFileSync(filePath)
   if ((kind === 'flp' || kind === 'template') && ext === 'flp' && isFlpBuffer(buffer)) return
@@ -706,15 +546,6 @@ function assertDirectUploadContent(kind: string, ext: string, filePath: string):
   if (kind === 'preset' && ext === 'vstpreset' && isVstPresetMagic(buffer)) return
   if (kind === 'preset' && ext === 'fxp' && isFxpMagic(buffer)) return
   throw new Error('Файл не похож на выбранный тип. Проверьте, что это не переименованная картинка.')
-}
-
-function isVst3ZipEntryMatch(entry: ZipContentEntry): boolean {
-  return entry.size > 0 && (entry.ext === 'vst3' || isInsideVst3Bundle(entry.relativePath))
-}
-
-/** Есть ли в архиве настоящий .vst3-бандл/файл (без чтения содержимого — только central directory). */
-async function zipHasVst3(zipPath: string): Promise<boolean> {
-  return findZipEntry(zipPath, async (entry) => isVst3ZipEntryMatch(entry))
 }
 
 async function assertZipUploadContent(kind: string, zipPath: string): Promise<void> {
