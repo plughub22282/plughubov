@@ -48,10 +48,8 @@ import {
 import { toSafeError } from './errors'
 import { downloadRateFor } from './download-safety'
 import { downloadFile } from './download-file'
+import { makeZipExtractionGuard } from './archive/zip-extraction-guard'
 import {
-  MAX_EXTRACTED_FILES,
-  MAX_SINGLE_FILE_BYTES,
-  MAX_TOTAL_UNCOMPRESSED_BYTES,
   extFromPath,
   readMagicBytes,
   isZipMagic,
@@ -381,40 +379,6 @@ const IMAGE_FILE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp'])
 const BEAT_PREVIEW_SECONDS = 30
 const RAR4_MAGIC = '526172211a0700'
 const RAR5_MAGIC = '526172211a070100'
-
-// ─── Защита от zip-бомб ─────────────────────────────────────────────────────────
-// Лимиты и низкоуровневый анализ ZIP вынесены в ./archive/zip-validation.ts
-// (единый source of truth). makeZipExtractionGuard ниже импортирует оттуда MAX_*.
-
-interface ZipEntryLike {
-  fileName: string
-  uncompressedSize: number
-}
-
-/**
- * Возвращает onEntry-страж для extractZip с замкнутыми счётчиками. Считает только
- * файлы (записи-папки заканчиваются на «/»). Размеры берутся из заголовков архива —
- * этого достаточно, чтобы отсечь классические zip-бомбы с петабайтным содержимым.
- */
-function makeZipExtractionGuard(): (entry: ZipEntryLike) => void {
-  let fileCount = 0
-  let totalBytes = 0
-  return (entry: ZipEntryLike): void => {
-    if (entry.fileName.endsWith('/')) return
-    fileCount += 1
-    if (fileCount > MAX_EXTRACTED_FILES) {
-      throw new Error('В архиве слишком много файлов.')
-    }
-    const size = Number(entry.uncompressedSize) || 0
-    if (size > MAX_SINGLE_FILE_BYTES) {
-      throw new Error('Файл внутри архива слишком большой.')
-    }
-    totalBytes += size
-    if (totalBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) {
-      throw new Error('Содержимое архива превышает допустимый размер.')
-    }
-  }
-}
 
 function bufferFromIpc(value: unknown): Buffer | null {
   if (!value) return null

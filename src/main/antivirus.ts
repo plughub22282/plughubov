@@ -17,6 +17,7 @@ import { tmpdir } from 'os'
 import extractZip from 'extract-zip'
 import { supabase } from './supabase'
 import { toSafeError } from './errors'
+import { makeZipExtractionGuard } from './archive/zip-extraction-guard'
 
 // ─── Карантин ───────────────────────────────────────────────────────────────
 
@@ -194,31 +195,6 @@ export function scanExtractedTree(dir: string): ScanResult {
   }
 
   return { ok: true }
-}
-
-// Те же лимиты, что и при валидации загружаемых архивов — защита от zip-бомб
-// применяется здесь так же, т.к. мы снова распаковываем недоверенный ZIP.
-const MAX_EXTRACTED_FILES = 10_000
-const MAX_SINGLE_FILE_BYTES = 4 * 1024 * 1024 * 1024
-const MAX_TOTAL_UNCOMPRESSED_BYTES = 4 * 1024 * 1024 * 1024
-
-interface ZipEntryLike {
-  fileName: string
-  uncompressedSize: number
-}
-
-function makeExtractionGuard(): (entry: ZipEntryLike) => void {
-  let fileCount = 0
-  let totalBytes = 0
-  return (entry: ZipEntryLike): void => {
-    if (entry.fileName.endsWith('/')) return
-    fileCount += 1
-    if (fileCount > MAX_EXTRACTED_FILES) throw new Error('В архиве слишком много файлов.')
-    const size = Number(entry.uncompressedSize) || 0
-    if (size > MAX_SINGLE_FILE_BYTES) throw new Error('Файл внутри архива слишком большой.')
-    totalBytes += size
-    if (totalBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) throw new Error('Содержимое архива превышает допустимый размер.')
-  }
 }
 
 // ─── VirusTotal через серверный прокси (Supabase Edge Function) ───────────
@@ -455,7 +431,7 @@ export async function runSecurityPipeline(zipPath: string, onLog: ScanLog): Prom
   mkdirSync(extractDir, { recursive: true })
   try {
     onLog('Проверка структуры архива…')
-    await extractZip(zipPath, { dir: extractDir, onEntry: makeExtractionGuard() })
+    await extractZip(zipPath, { dir: extractDir, onEntry: makeZipExtractionGuard() })
     const signatureResult = scanExtractedTree(extractDir)
     if (!signatureResult.ok) return signatureResult
 
