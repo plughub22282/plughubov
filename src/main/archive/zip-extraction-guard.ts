@@ -7,6 +7,12 @@ import {
 export interface ZipEntryLike {
   fileName: string
   uncompressedSize: number
+  externalFileAttributes: number
+}
+
+function isSymlinkEntry(entry: ZipEntryLike): boolean {
+  const mode = (entry.externalFileAttributes >> 16) & 0xffff
+  return (mode & 0xf000) === 0xa000
 }
 
 export function makeZipExtractionGuard(): (entry: ZipEntryLike) => void {
@@ -14,6 +20,9 @@ export function makeZipExtractionGuard(): (entry: ZipEntryLike) => void {
   let totalBytes = 0
   return (entry: ZipEntryLike): void => {
     if (entry.fileName.endsWith('/')) return
+    if (isSymlinkEntry(entry)) {
+      throw new Error('Символические ссылки внутри ZIP-архива запрещены.')
+    }
     fileCount += 1
     if (fileCount > MAX_EXTRACTED_FILES) {
       throw new Error('В архиве слишком много файлов.')

@@ -12,9 +12,22 @@ import {
 const TOO_MANY_MESSAGE = 'В архиве слишком много файлов.'
 const TOO_BIG_MESSAGE = 'Файл внутри архива слишком большой.'
 const TOO_LARGE_TOTAL_MESSAGE = 'Содержимое архива превышает допустимый размер.'
+const SYMLINK_MESSAGE = 'Символические ссылки внутри ZIP-архива запрещены.'
 
-function entry(fileName: string, uncompressedSize: number): ZipEntryLike {
-  return { fileName, uncompressedSize }
+const SYMLINK_ATTRIBUTES = 0xa0000000
+const SYMLINK_WITH_PERMISSIONS_ATTRIBUTES = 0xa1ff0000
+const SYMLINK_WITH_OTHER_PERMISSIONS_ATTRIBUTES = 0xa1240000
+const REGULAR_FILE_ATTRIBUTES = 0x80000000
+const DIRECTORY_ATTRIBUTES = 0x40000000
+const PERMISSIONS_WITHOUT_TYPE_ATTRIBUTES = 0x01ff0000
+
+function entry(
+  fileName: string,
+  uncompressedSize: number,
+  externalFileAttributes = 0
+): ZipEntryLike {
+  const zipEntry = { fileName, uncompressedSize, externalFileAttributes }
+  return zipEntry
 }
 
 function expectExactError(run: () => void, expectedMessage: string): void {
@@ -73,6 +86,107 @@ describe('makeZipExtractionGuard — состояние и lifecycle', () => {
   it('бросает ошибку синхронно', () => {
     const guard = makeZipExtractionGuard()
     expectExactError(() => guard(entry('infinite.bin', Infinity)), TOO_BIG_MESSAGE)
+  })
+})
+
+describe('makeZipExtractionGuard — политика символических ссылок', () => {
+  it('отклоняет Unix symlink type 0xa000', () => {
+    const guard = makeZipExtractionGuard()
+    expectExactError(() => guard(entry('link', 1, SYMLINK_ATTRIBUTES)), SYMLINK_MESSAGE)
+  })
+
+  it('отклоняет symlink mode с permission bits', () => {
+    const guard = makeZipExtractionGuard()
+    expectExactError(
+      () => guard(entry('link-with-permissions', 1, SYMLINK_WITH_PERMISSIONS_ATTRIBUTES)),
+      SYMLINK_MESSAGE
+    )
+  })
+
+  it('не зависит от значений нижних permission bits', () => {
+    const guard = makeZipExtractionGuard()
+    expectExactError(
+      () => guard(entry('first-link', 1, SYMLINK_WITH_PERMISSIONS_ATTRIBUTES)),
+      SYMLINK_MESSAGE
+    )
+    expectExactError(
+      () => guard(entry('second-link', 1, SYMLINK_WITH_OTHER_PERMISSIONS_ATTRIBUTES)),
+      SYMLINK_MESSAGE
+    )
+  })
+
+  it('не зависит от creator OS metadata', () => {
+    const guard = makeZipExtractionGuard()
+    const fatStyleEntry = {
+      ...entry('fat-style-link', 1, SYMLINK_ATTRIBUTES),
+      versionMadeBy: 20
+    }
+
+    expectExactError(() => guard(fatStyleEntry), SYMLINK_MESSAGE)
+  })
+
+  it('разрешает regular-file mode 0x8000', () => {
+    const guard = makeZipExtractionGuard()
+    expect(() => guard(entry('regular.bin', 1, REGULAR_FILE_ATTRIBUTES))).not.toThrow()
+  })
+
+  it('разрешает entry без Unix type bits', () => {
+    const guard = makeZipExtractionGuard()
+    expect(() => guard(entry('permissions-only.bin', 1, PERMISSIONS_WITHOUT_TYPE_ATTRIBUTES))).not.toThrow()
+  })
+
+  it('разрешает externalFileAttributes=0', () => {
+    const guard = makeZipExtractionGuard()
+    expect(() => guard(entry('no-attributes.bin', 1, 0))).not.toThrow()
+  })
+
+  it('сохраняет precedence trailing-slash directory над symlink bits', () => {
+    const guard = makeZipExtractionGuard()
+    expect(() => guard(entry('link-shaped-directory/', MAX_SINGLE_FILE_BYTES + 1, SYMLINK_ATTRIBUTES))).not.toThrow()
+  })
+
+  it('сохраняет directory skip для directory mode с trailing slash', () => {
+    const guard = makeZipExtractionGuard()
+    expect(() => guard(entry('directory/', MAX_SINGLE_FILE_BYTES + 1, DIRECTORY_ATTRIBUTES))).not.toThrow()
+  })
+})
+
+describe('makeZipExtractionGuard — порядок и состояние при symlink failure', () => {
+  it('возвращает symlink error раньше single-file-size error', () => {
+    const guard = makeZipExtractionGuard()
+    expectExactError(
+      () => guard(entry('oversized-link', MAX_SINGLE_FILE_BYTES + 1, SYMLINK_ATTRIBUTES)),
+      SYMLINK_MESSAGE
+    )
+  })
+
+  it('возвращает symlink error раньше file-count error', () => {
+    const guard = makeZipExtractionGuard()
+    addFiles(guard, MAX_EXTRACTED_FILES)
+    expectExactError(() => guard(entry('link-after-limit', 1, SYMLINK_ATTRIBUTES)), SYMLINK_MESSAGE)
+  })
+
+  it('возвращает symlink error раньше total-size error', () => {
+    const guard = makeZipExtractionGuard()
+    guard(entry('maximum.bin', MAX_TOTAL_UNCOMPRESSED_BYTES))
+    expectExactError(() => guard(entry('link-after-total', 1, SYMLINK_ATTRIBUTES)), SYMLINK_MESSAGE)
+  })
+
+  it('не изменяет fileCount после symlink throw', () => {
+    const guard = makeZipExtractionGuard()
+    expectExactError(() => guard(entry('link', 1, SYMLINK_ATTRIBUTES)), SYMLINK_MESSAGE)
+    expect(() => addFiles(guard, MAX_EXTRACTED_FILES)).not.toThrow()
+    expectExactError(() => guard(entry('one-too-many.bin', 0)), TOO_MANY_MESSAGE)
+  })
+
+  it('не изменяет totalBytes после symlink throw', () => {
+    const guard = makeZipExtractionGuard()
+    expectExactError(
+      () => guard(entry('maximum-sized-link', MAX_TOTAL_UNCOMPRESSED_BYTES, SYMLINK_ATTRIBUTES)),
+      SYMLINK_MESSAGE
+    )
+    expect(() => guard(entry('maximum.bin', MAX_TOTAL_UNCOMPRESSED_BYTES))).not.toThrow()
+    expectExactError(() => guard(entry('over-total.bin', 1)), TOO_LARGE_TOTAL_MESSAGE)
   })
 })
 
@@ -201,10 +315,14 @@ describe('makeZipExtractionGuard — необычные значения раз�
 
   it('трактует отсутствующее и нечисловое значение как нулевой размер', () => {
     const guard = makeZipExtractionGuard()
-    const missingSize = { fileName: 'missing.bin' } as unknown as ZipEntryLike
+    const missingSize = {
+      fileName: 'missing.bin',
+      externalFileAttributes: 0
+    } as unknown as ZipEntryLike
     const nonNumericSize = {
       fileName: 'non-numeric.bin',
-      uncompressedSize: 'not-a-number'
+      uncompressedSize: 'not-a-number',
+      externalFileAttributes: 0
     } as unknown as ZipEntryLike
 
     expect(() => guard(missingSize)).not.toThrow()
