@@ -37,6 +37,10 @@ export interface ZipEntrySpec {
   name: string
   /** Реальные (STORED) данные записи. По умолчанию пустой буфер. */
   data?: Buffer
+  /** Central-directory version made by. По умолчанию прежнее значение 20. */
+  versionMadeBy?: number
+  /** Central-directory external file attributes. По умолчанию 0. */
+  externalFileAttributes?: number
   /**
    * Подделать central-directory uncompressedSize независимо от data.
    * Использует deflate-метод (8), чтобы обойти stored-size-валидацию yauzl.
@@ -113,7 +117,7 @@ function buildEntry(spec: ZipEntrySpec, localOffset: number): BuiltEntry {
 
   const central = Buffer.concat([
     sig(CENTRAL_DIR_HEADER_SIG),
-    u16(20), // version made by
+    u16(spec.versionMadeBy ?? 20), // version made by
     u16(needsZip64 ? 45 : 20), // version needed
     u16(0), // gp flag
     u16(method),
@@ -127,7 +131,7 @@ function buildEntry(spec: ZipEntrySpec, localOffset: number): BuiltEntry {
     u16(0), // comment len
     u16(0), // disk number
     u16(0), // internal attrs
-    u32(0), // external attrs
+    u32(spec.externalFileAttributes ?? 0), // external attrs
     u32(localOffset),
     nameBuf,
     zip64Extra
