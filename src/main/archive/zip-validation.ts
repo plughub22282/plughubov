@@ -1,10 +1,10 @@
 // Низкоуровневый анализ и валидация ZIP-архивов — вынесено из src/main/index.ts.
 // Модуль намеренно зависит только от `fs` и `yauzl`: он НЕ импортирует Electron,
 // Supabase, index.ts или antivirus.ts, чтобы оставаться unit-тестируемым без
-// поднятия Electron и не создавать циклических импортов. Бизнес-оркестрация
-// загрузки (assertZipUploadContent, makeZipExtractionGuard) остаётся в index.ts
-// и импортирует эти примитивы отсюда — единственный source of truth для ZIP-лимитов
-// и ZIP-хелперов.
+// поднятия Electron и не создавать циклических импортов. Бизнес-оркестрация загрузки
+// (`assertZipUploadContent`) остаётся в index.ts, а `makeZipExtractionGuard` находится
+// в ./zip-extraction-guard.ts. Этот модуль отвечает за low-level ZIP inspection,
+// общие лимиты и validation helpers.
 
 import { openSync, readSync, closeSync } from 'fs'
 import yauzl from 'yauzl'
